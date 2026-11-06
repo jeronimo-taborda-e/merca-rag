@@ -1,0 +1,22 @@
+# torch (versión CPU) se instala aparte en el Dockerfile para no descargar CUDA (~3 GB)
+
+jupyterlab>=4.2,<5
+ipywidgets>=8.1,<9
+
+# Base de datos
+psycopg2-binary>=2.9.10,<3
+pgvector>=0.4,<0.6
+
+# Embeddings (MiniLM multilingüe + CLIP)
+sentence-transformers[image]>=5.4,<7
+
+# Datos, visualización y NLP (lo que instalaba archivo_arranque.ipynb)
+numpy>=2.0,<3
+pandas>=2.2,<4
+pillow>=11,<13
+matplotlib>=3.9,<4
+scikit-learn>=1.5,<2
+nltk>=3.9,<4
+
+# Cliente LLM (Groq expone una API compatible con OpenAI)
+openai>=1.50,<3

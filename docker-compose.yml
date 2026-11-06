@@ -1,0 +1,68 @@
+# =============================================================================
+# MercaRAG - PostgreSQL + pgvector + JupyterLab
+# Bases de Datos Relacionales - Universidad de Caldas
+#
+# Dos servicios:
+#   db       -> PostgreSQL 17 con la extensión pgvector ya instalada
+#   jupyter  -> JupyterLab con Python, MiniLM, CLIP y el cliente de Groq
+#
+# Uso:
+#   1. Revisar el archivo .env (copiar de .env.example si no existe)
+#   2. docker compose up -d --build
+#   3. Abrir http://localhost:8889  (token: el valor de JUPYTER_TOKEN)
+# =============================================================================
+
+name: mercarag
+
+services:
+
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: mercarag_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Solo accesible desde este equipo. 5434 evita chocar con otro PostgreSQL
+      # (5432) o con el laboratorio de clase (5433).
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # schema.sql se ejecuta SOLO la primera vez (volumen vacío).
+      # Para volver a ejecutarlo: docker compose down -v
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  jupyter:
+    build:
+      context: ./jupyter
+    image: mercarag-jupyter:1.0
+    container_name: mercarag_jupyter
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Dentro de la red de Docker el servidor se llama "db" y usa el puerto 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
+      LLM_MODEL: ${LLM_MODEL:-llama-3.3-70b-versatile}
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mercarag}
+    ports:
+      - "127.0.0.1:${JUPYTER_PORT:-8889}:8888"
+    volumes:
+      - ./notebooks:/home/estudiante/trabajo/notebooks
+      - ./data:/home/estudiante/trabajo/data
+      # Caché de modelos: se descargan una sola vez y sobreviven a reinicios
+      - modelos_hf:/home/estudiante/.cache/huggingface
+
+volumes:
+  pgdata:
+  modelos_hf:
