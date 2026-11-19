@@ -1,0 +1,4 @@
+estrategia,chunks,documentos,chars_promedio,tokens_promedio,tokens_max,pct_truncados
+fijo,104,93,1094,287,477,0.0
+oraciones,305,93,407,115,228,0.0
+semantico,977,93,112,41,94,0.0

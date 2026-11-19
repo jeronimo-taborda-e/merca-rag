@@ -1,0 +1,22 @@
+---
+codigo_doc: FICHA_GALLETAS_DE_SODA
+tipo: ficha
+titulo: Ficha de producto - Galletas de soda
+codigo_barras: 7700000008268
+idioma: es
+fecha: 2026-11-01
+fuente: Catálogo MercaRAG
+---
+# Ficha de producto: Galletas de soda
+
+## Descripción
+Galletas saladas tipo soda, livianas y crocantes, para acompañar sopas y onces. En MercaRAG se encuentra en la sección de snacks y dulces. La referencia de esta ficha es Galletas de soda Frito Lay pack x6, con código de barras 7700000008268.
+
+## Presentaciones y marcas
+Se vende en las presentaciones pack x6, pack x12, 300 g. Además de Frito Lay, el supermercado maneja las marcas Margarita, Jet, Colombina, Noel. El precio de referencia de la presentación pack x6 es de 5.150 pesos, y puede variar según la marca y las promociones vigentes de cada sede.
+
+## Conservación y manipulación
+Mantener en un lugar fresco y seco; una vez abierto cerrar bien el paquete para conservar lo crocante.
+
+## Disponibilidad
+La disponibilidad se consulta en tiempo real en el inventario de cada punto de venta (Cable, Chipre, Milán, Centro y La Enea). Si el producto está agotado en una sede, el servicio de domicilios puede despacharlo desde la sede más cercana que tenga existencias.

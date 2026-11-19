@@ -18,5 +18,13 @@ matplotlib>=3.9,<4
 scikit-learn>=1.5,<2
 nltk>=3.9,<4
 
+# Chunking (Entrega 1): tamaño fijo, oraciones y semántico
+langchain-text-splitters>=0.3,<2
+tiktoken>=0.8,<1
+spacy>=3.8,<4
+
+# Lectura de documentos PDF
+pypdf>=5,<7
+
 # Cliente LLM (Groq expone una API compatible con OpenAI)
 openai>=1.50,<3

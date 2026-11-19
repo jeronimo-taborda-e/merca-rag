@@ -4,12 +4,13 @@
 #
 # Dos servicios:
 #   db       -> PostgreSQL 17 con la extensión pgvector ya instalada
-#   jupyter  -> JupyterLab con Python, MiniLM, CLIP y el cliente de Groq
+#   jupyter  -> JupyterLab con Python, MiniLM, CLIP, spaCy, LangChain y el cliente de Groq
 #
 # Uso:
 #   1. Revisar el archivo .env (copiar de .env.example si no existe)
 #   2. docker compose up -d --build
 #   3. Abrir http://localhost:8889  (token: el valor de JUPYTER_TOKEN)
+#   4. Ejecutar notebooks 00, 01 y 02 en orden
 # =============================================================================
 
 name: mercarag
@@ -33,6 +34,10 @@ services:
       # schema.sql se ejecuta SOLO la primera vez (volumen vacío).
       # Para volver a ejecutarlo: docker compose down -v
       - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      # Datos de prueba del dominio (sedes, catálogo, inventario, compras, domicilios)
+      - ./sql/02_datos_dominio.sql:/docker-entrypoint-initdb.d/02_datos_dominio.sql:ro
+      # Consultas clásicas disponibles dentro del contenedor: psql -f /sql/03_consultas_clasicas.sql
+      - ./sql:/sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -42,7 +47,7 @@ services:
   jupyter:
     build:
       context: ./jupyter
-    image: mercarag-jupyter:1.0
+    image: mercarag-jupyter:1.1
     container_name: mercarag_jupyter
     restart: unless-stopped
     depends_on:
@@ -53,13 +58,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
-      LLM_MODEL: ${LLM_MODEL:-llama-3.3-70b-versatile}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-120b}
       JUPYTER_TOKEN: ${JUPYTER_TOKEN:-mercarag}
     ports:
       - "127.0.0.1:${JUPYTER_PORT:-8889}:8888"
     volumes:
       - ./notebooks:/home/estudiante/trabajo/notebooks
       - ./data:/home/estudiante/trabajo/data
+      - ./sql:/home/estudiante/trabajo/sql:ro
       # Caché de modelos: se descargan una sola vez y sobreviven a reinicios
       - modelos_hf:/home/estudiante/.cache/huggingface
 
