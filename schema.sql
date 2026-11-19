@@ -1,6 +1,21 @@
+-- =====================================================================
+-- MercaRAG - Esquema relacional + vectorial (PostgreSQL + pgvector)
+-- Se ejecuta automáticamente la primera vez que se crea el volumen de Docker
+-- (docker-entrypoint-initdb.d). Para re-ejecutarlo: docker compose down -v
+--
+-- Cambios respecto a la Entrega 1 (para soportar el laboratorio multimodal):
+--   * documento.codigo_doc / tipo          -> carga idempotente (ON CONFLICT)
+--   * imagen.codigo_img / sha256 / ancho / alto -> no duplicar fotos
+--   * embeddings_texto.n_tokens / parametros    -> experimento de chunking
+--   * embeddings_texto_clip (nueva)        -> ruta imagen -> texto (CLIP 512)
+--   * query_embeddings.vector_clip         -> preguntas en el espacio CLIP
+--   * consulta.tipo_consulta / respuesta_llm / tiempos -> trazabilidad (RF-08)
+--   * resultado.ranking / id_embedding_texto     -> qué chunk se recuperó
+-- =====================================================================
 CREATE EXTENSION IF NOT EXISTS vector;
 
 DROP TABLE IF EXISTS query_embeddings CASCADE;
+DROP TABLE IF EXISTS embeddings_texto_clip CASCADE;
 DROP TABLE IF EXISTS embeddings_imagen CASCADE;
 DROP TABLE IF EXISTS embeddings_texto CASCADE;
 DROP TABLE IF EXISTS evaluacion CASCADE;
@@ -323,6 +338,9 @@ CREATE TABLE domicilio (
 CREATE TABLE documento (
     id_doc SERIAL PRIMARY KEY,
     id_producto INT,
+    codigo_doc VARCHAR(60) NOT NULL UNIQUE,
+    tipo VARCHAR(20) NOT NULL DEFAULT 'ficha'
+        CHECK (tipo IN ('ficha', 'politica', 'manual', 'guia')),
     titulo VARCHAR(200) NOT NULL,
     idioma VARCHAR(10) NOT NULL,
     fecha DATE,
@@ -339,7 +357,11 @@ CREATE TABLE imagen (
     id_img SERIAL PRIMARY KEY,
     id_doc INT,
     id_producto INT,
+    codigo_img VARCHAR(60) NOT NULL UNIQUE,
     ruta_archivo TEXT NOT NULL,
+    sha256 CHAR(64) NOT NULL UNIQUE,
+    ancho INT CHECK (ancho > 0),
+    alto INT CHECK (alto > 0),
     descripcion TEXT,
 
     CONSTRAINT fk_imagen_documento
@@ -371,6 +393,16 @@ CREATE TABLE consulta (
     id_consulta SERIAL PRIMARY KEY,
     id_usuario INT NOT NULL,
     texto_pregunta TEXT NOT NULL,
+    tipo_consulta VARCHAR(20) NOT NULL DEFAULT 'texto_texto'
+        CHECK (tipo_consulta IN ('texto_texto', 'texto_imagen', 'imagen_imagen',
+                                 'imagen_texto', 'hibrida', 'rag')),
+    estrategia_chunking VARCHAR(20)
+        CHECK (estrategia_chunking IN ('fijo', 'oraciones', 'semantico')),
+    ruta_imagen_consulta TEXT,
+    respuesta_llm TEXT,
+    modelo_llm VARCHAR(100),
+    tiempo_recuperacion_ms NUMERIC(10,2) CHECK (tiempo_recuperacion_ms >= 0),
+    tiempo_total_ms NUMERIC(10,2) CHECK (tiempo_total_ms >= 0),
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_consulta_usuario
@@ -384,7 +416,12 @@ CREATE TABLE resultado (
     id_consulta INT NOT NULL,
     id_doc INT,
     id_img INT,
+    id_embedding_texto INT,
+    ranking INT NOT NULL CHECK (ranking > 0),
     score_similitud NUMERIC(10,8) NOT NULL,
+
+    CONSTRAINT uq_resultado_ranking
+        UNIQUE (id_consulta, ranking),
 
     CONSTRAINT ck_resultado_recurso
         CHECK (id_doc IS NOT NULL OR id_img IS NOT NULL),
@@ -404,6 +441,7 @@ CREATE TABLE resultado (
         REFERENCES imagen(id_img)
         ON DELETE RESTRICT
 );
+-- La FK hacia el chunk se agrega después de crear embeddings_texto (ver abajo).
 
 CREATE TABLE evaluacion (
     id_eval SERIAL PRIMARY KEY,
@@ -441,6 +479,8 @@ CREATE TABLE embeddings_texto (
     estrategia_chunking VARCHAR(20) NOT NULL
         CHECK (estrategia_chunking IN ('fijo', 'oraciones', 'semantico')),
     contenido_chunk TEXT NOT NULL,
+    n_tokens INT CHECK (n_tokens > 0),
+    parametros JSONB,
     vector_embedding VECTOR(384) NOT NULL,
     modelo VARCHAR(100),
 
@@ -453,11 +493,27 @@ CREATE TABLE embeddings_texto (
         ON DELETE RESTRICT
 );
 
+-- Mismo chunk, pero en el espacio CLIP (512): permite la ruta imagen -> texto.
+-- 1:1 con embeddings_texto; si se borra el chunk se borra su vector CLIP.
+CREATE TABLE embeddings_texto_clip (
+    id_embedding INT PRIMARY KEY,
+    vector_embedding VECTOR(512) NOT NULL,
+    modelo VARCHAR(100),
+
+    CONSTRAINT fk_embeddings_texto_clip_chunk
+        FOREIGN KEY (id_embedding)
+        REFERENCES embeddings_texto(id_embedding)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE embeddings_imagen (
     id_embedding SERIAL PRIMARY KEY,
     id_img INT NOT NULL,
     vector_embedding VECTOR(512) NOT NULL,
     modelo VARCHAR(100),
+
+    CONSTRAINT uq_embeddings_imagen_modelo
+        UNIQUE (id_img, modelo),
 
     CONSTRAINT fk_embeddings_imagen_imagen
         FOREIGN KEY (id_img)
@@ -468,14 +524,26 @@ CREATE TABLE embeddings_imagen (
 CREATE TABLE query_embeddings (
     id_qemb SERIAL PRIMARY KEY,
     id_consulta INT NOT NULL UNIQUE,
-    vector_embedding VECTOR(384) NOT NULL,
+    vector_embedding VECTOR(384),          -- pregunta en el espacio MiniLM
+    vector_clip VECTOR(512),               -- pregunta (texto o foto) en el espacio CLIP
     modelo VARCHAR(100),
+
+    CONSTRAINT ck_query_embeddings_algun_vector
+        CHECK (vector_embedding IS NOT NULL OR vector_clip IS NOT NULL),
 
     CONSTRAINT fk_query_embeddings_consulta
         FOREIGN KEY (id_consulta)
         REFERENCES consulta(id_consulta)
         ON DELETE RESTRICT
 );
+
+-- Resultado -> chunk exacto recuperado. SET NULL: si se recarga un documento
+-- (se regeneran sus chunks) el historial de consultas conserva el id_doc.
+ALTER TABLE resultado
+    ADD CONSTRAINT fk_resultado_chunk
+    FOREIGN KEY (id_embedding_texto)
+    REFERENCES embeddings_texto(id_embedding)
+    ON DELETE SET NULL;
 
 CREATE INDEX idx_producto_categoria
     ON producto(id_categoria);
@@ -549,6 +617,18 @@ CREATE INDEX idx_imagen_etiqueta_etiqueta
 CREATE INDEX idx_documento_idioma_fecha
     ON documento(idioma, fecha);
 
+CREATE INDEX idx_embeddings_texto_documento
+    ON embeddings_texto(id_doc, estrategia_chunking);
+
+CREATE INDEX idx_resultado_chunk
+    ON resultado(id_embedding_texto);
+
+CREATE INDEX idx_inventario_punto_venta_stock
+    ON inventario(id_punto_venta, id_producto) WHERE stock > 0;
+
+CREATE INDEX idx_producto_precio
+    ON producto(precio);
+
 -- =====================================================================
 -- 11. ÍNDICES VECTORIALES (pgvector, HNSW, distancia coseno)
 -- =====================================================================
@@ -573,5 +653,10 @@ CREATE INDEX idx_emb_texto_hnsw_semantico
 
 CREATE INDEX idx_emb_imagen_hnsw
     ON embeddings_imagen
+    USING hnsw (vector_embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+CREATE INDEX idx_emb_texto_clip_hnsw
+    ON embeddings_texto_clip
     USING hnsw (vector_embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
