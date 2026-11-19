@@ -1,3 +1,9 @@
 .env
 .ipynb_checkpoints/
 __pycache__/
+
+# Fotos del catálogo: se comparten por fuera de git (las carpetas, .gitkeep y LEEME.md sí se suben)
+data/imagenes/**/*.[jJ][pP][gG]
+data/imagenes/**/*.[jJ][pP][eE][gG]
+data/imagenes/**/*.[pP][nN][gG]
+data/imagenes/**/*.[wW][eE][bB][pP]
