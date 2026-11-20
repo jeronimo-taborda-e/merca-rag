@@ -7,7 +7,7 @@ Todas siguen el mismo patrón:
 
 | Función                   | Vectoriza con     | Busca en                | Requerimiento |
 |---------------------------|-------------------|-------------------------|---------------|
-| buscar_texto_texto        | MiniLM (384)      | embeddings_texto        | RF-06         |
+| buscar_texto_texto        | MiniLM (384) + FTS| embeddings_texto        | RF-06         |
 | buscar_texto_imagen       | CLIP texto (512)  | embeddings_imagen       | RF-09         |
 | buscar_imagen_imagen      | CLIP imagen (512) | embeddings_imagen       |               |
 | buscar_imagen_texto       | CLIP imagen (512) | embeddings_texto_clip   |               |
@@ -32,10 +32,87 @@ def _df(filas) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------ texto -> texto
+# Búsqueda híbrida: vector (MiniLM) + texto completo de PostgreSQL, fusionados con RRF.
+#
+# Por qué: las 85 fichas comparten frases de plantilla ("Si el producto está agotado en
+# una sede, el servicio de domicilios..."). Con búsqueda solo vectorial, una misma frase
+# repetida en 85 documentos ocupaba todo el top-k y el chunk que respondía quedaba en el
+# puesto ~100 (p. ej. "¿Qué hago si me llega un producto vencido en el domicilio?").
+#   1. Cada lista se deduplica por contenido_chunk (una frase repetida cuenta una vez).
+#   2. La lista léxica (to_tsvector 'spanish', términos unidos con OR) premia palabras
+#      exactas como "vencido" que MiniLM no distingue bien de "agotado".
+#   3. Reciprocal Rank Fusion: score_rrf = sum(1 / (60 + puesto)) en cada lista.
+# El índice GIN idx_emb_texto_fts (schema.sql) acelera el filtro @@.
+_SQL_HIBRIDA = """
+    WITH q AS (
+        -- plainto_tsquery une los términos con AND; se cambian a OR para no exigir todos
+        SELECT replace(plainto_tsquery('spanish', %(texto)s)::text, '&', '|')::tsquery AS tsq
+    ),
+    base AS (
+        SELECT e.*
+        FROM embeddings_texto e
+        JOIN documento d ON d.id_doc = e.id_doc
+        WHERE e.estrategia_chunking = %(estrategia)s
+          AND (%(tipo)s::text IS NULL OR d.tipo = %(tipo)s)
+          AND (%(id_producto)s::int IS NULL OR d.id_producto = %(id_producto)s)
+    ),
+    vec AS (
+        SELECT id_embedding, row_number() OVER (ORDER BY dist) AS puesto
+        FROM (
+            SELECT DISTINCT ON (c.contenido_chunk) c.id_embedding, c.dist
+            FROM (SELECT id_embedding, contenido_chunk, vector_embedding <=> %(q)s AS dist
+                  FROM base ORDER BY vector_embedding <=> %(q)s LIMIT %(candidatos)s) c
+            ORDER BY c.contenido_chunk, c.dist
+        ) u
+        ORDER BY dist
+        LIMIT %(n_lista)s
+    ),
+    lex AS (
+        SELECT id_embedding, row_number() OVER (ORDER BY rango DESC) AS puesto
+        FROM (
+            SELECT DISTINCT ON (b.contenido_chunk) b.id_embedding,
+                   ts_rank_cd(to_tsvector('spanish', b.contenido_chunk), q.tsq, 1) AS rango
+            FROM base b, q
+            WHERE to_tsvector('spanish', b.contenido_chunk) @@ q.tsq
+            ORDER BY b.contenido_chunk, rango DESC
+        ) u
+        ORDER BY rango DESC
+        LIMIT %(n_lista)s
+    ),
+    fusion AS (
+        SELECT id_embedding, SUM(1.0 / (60 + puesto)) AS score_rrf
+        FROM (SELECT * FROM vec UNION ALL SELECT * FROM lex) l
+        GROUP BY id_embedding
+    )
+    SELECT e.id_embedding, d.id_doc, d.codigo_doc, d.titulo, d.tipo, e.chunk_id,
+           e.estrategia_chunking AS estrategia, e.contenido_chunk,
+           1 - (e.vector_embedding <=> %(q)s) AS score,
+           f.score_rrf
+    FROM fusion f
+    JOIN embeddings_texto e ON e.id_embedding = f.id_embedding
+    JOIN documento d ON d.id_doc = e.id_doc
+    ORDER BY f.score_rrf DESC
+    LIMIT %(k)s
+"""
+
+
 def buscar_texto_texto(conn, modelos, pregunta: str, estrategia: str = "semantico", k: int = 5,
-                       tipo: str | None = None, id_producto: int | None = None) -> pd.DataFrame:
-    """Chunks más parecidos a la pregunta, con filtros relacionales opcionales."""
+                       tipo: str | None = None, id_producto: int | None = None,
+                       hibrida: bool = True) -> pd.DataFrame:
+    """Chunks más parecidos a la pregunta, con filtros relacionales opcionales.
+
+    hibrida=True (por defecto): vector + texto completo con RRF y sin chunks repetidos.
+    hibrida=False: solo similitud coseno (comportamiento original del laboratorio).
+    En ambos casos `score` es la similitud coseno (1 - distancia) del chunk.
+    """
     qvec = modelos.embed_texto([pregunta])[0]
+    if hibrida:
+        params = {"q": qvec, "texto": pregunta, "estrategia": estrategia, "tipo": tipo,
+                  "id_producto": id_producto, "candidatos": 200, "n_lista": 40, "k": k}
+        df = _df(consultar(conn, _SQL_HIBRIDA, params))
+        if "score_rrf" in df:
+            df["score_rrf"] = df["score_rrf"].astype(float).round(5)
+        return df
     sql = """
         SELECT e.id_embedding, d.id_doc, d.codigo_doc, d.titulo, d.tipo, e.chunk_id,
                e.estrategia_chunking AS estrategia, e.contenido_chunk,

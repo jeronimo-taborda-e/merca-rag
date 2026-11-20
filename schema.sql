@@ -623,6 +623,12 @@ CREATE INDEX idx_embeddings_texto_documento
 CREATE INDEX idx_resultado_chunk
     ON resultado(id_embedding_texto);
 
+-- Texto completo (español) sobre los chunks: parte léxica de la búsqueda híbrida
+-- (busqueda.buscar_texto_texto). La expresión debe ser idéntica a la de la consulta.
+CREATE INDEX idx_emb_texto_fts
+    ON embeddings_texto
+    USING gin (to_tsvector('spanish', contenido_chunk));
+
 CREATE INDEX idx_inventario_punto_venta_stock
     ON inventario(id_punto_venta, id_producto) WHERE stock > 0;
 

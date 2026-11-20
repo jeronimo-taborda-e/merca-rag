@@ -1,82 +1,82 @@
 estrategia,pregunta,esperado,top1,score_top1,latencia_ms,hit@1,hit@k,mrr,posicion
 fijo,¿Cuánto cuesta el domicilio si mi pedido es de 50.000 pesos?,POL_DOMICILIOS,FICHA_AGUA_CON_GAS,0.4644,5.1,0.0,0.0,0.0,
-fijo,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,GUIA_PUNTOS_VENTA,0.4454,3.7,0.0,0.0,0.0,
-fijo,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DEVOLUCIONES,0.432,3.8,0.0,1.0,0.5,2.0
-fijo,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.4086,4.9,1.0,1.0,1.0,1.0
-fijo,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DATOS_PERSONALES,0.3998,4.8,0.0,1.0,0.5,2.0
-fijo,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,POL_PROMOCIONES,0.439,4.3,0.0,0.0,0.0,
-fijo,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.4626,4.6,1.0,1.0,1.0,1.0
-fijo,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,GUIA_CAFE_CALDAS,0.391,4.8,0.0,0.0,0.0,
-fijo,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.489,5.2,1.0,1.0,1.0,1.0
-fijo,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.545,5.0,1.0,1.0,1.0,1.0
-fijo,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.3721,4.4,1.0,1.0,1.0,1.0
-fijo,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.509,4.5,1.0,1.0,1.0,1.0
-fijo,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,FICHA_BEBIDA_HIDRATANTE,0.4216,4.5,0.0,0.0,0.0,
-fijo,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,MAN_CADENA_FRIO,0.3402,3.3,0.0,0.0,0.0,
-fijo,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,FICHA_MALTA,0.5035,3.0,0.0,1.0,0.5,2.0
-fijo,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.5437,2.8,1.0,1.0,1.0,1.0
-fijo,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_PAN_DE_BONO,0.2131,3.0,0.0,0.0,0.0,
-fijo,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,GUIA_ETIQUETADO,0.3596,3.0,1.0,1.0,1.0,1.0
-fijo,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_CAFE_CALDAS,0.3963,3.0,0.0,0.0,0.0,
-fijo,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_DEVOLUCIONES,0.4554,3.8,0.0,1.0,0.5,2.0
-fijo,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.6499,3.3,1.0,1.0,1.0,1.0
-fijo,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DATOS_PERSONALES,0.5669,3.5,1.0,1.0,1.0,1.0
-fijo,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_HARINA_DE_MAIZ_PRECOCIDA,0.3711,3.1,0.0,0.0,0.0,
-fijo,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_JUGO_DE_MANGO,0.3368,3.6,0.0,0.0,0.0,
-fijo,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.4388,3.1,1.0,1.0,1.0,1.0
-fijo,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,GUIA_ETIQUETADO,0.3677,3.1,0.0,0.0,0.0,
-fijo,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_BEBIDA_HIDRATANTE,0.5242,3.1,0.0,0.0,0.0,
-oraciones,¿Cuánto cuesta el domicilio si mi pedido es de 50.000 pesos?,POL_DOMICILIOS,POL_DOMICILIOS,0.6621,3.0,1.0,1.0,1.0,1.0
-oraciones,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,POL_DOMICILIOS,0.5748,3.3,1.0,1.0,1.0,1.0
-oraciones,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DOMICILIOS,0.7589,3.0,1.0,1.0,1.0,1.0
-oraciones,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,POL_DATOS_PERSONALES,0.4832,3.0,0.0,1.0,0.25,4.0
-oraciones,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.6323,3.0,1.0,1.0,1.0,1.0
-oraciones,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,MAN_CAJA,0.4943,3.5,0.0,0.0,0.0,
-oraciones,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.7278,3.1,1.0,1.0,1.0,1.0
-oraciones,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,FICHA_BANANO_CRIOLLO,0.5847,3.1,0.0,1.0,0.5,2.0
-oraciones,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.6753,2.9,1.0,1.0,1.0,1.0
-oraciones,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.6845,2.9,1.0,1.0,1.0,1.0
-oraciones,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,POL_DOMICILIOS,0.5751,2.9,0.0,1.0,0.5,2.0
-oraciones,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,POL_DOMICILIOS,0.6096,3.1,0.0,1.0,0.5,2.0
-oraciones,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,MAN_CAJA,0.6777,2.9,1.0,1.0,1.0,1.0
-oraciones,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,POL_DEVOLUCIONES,0.4339,3.5,0.0,0.0,0.0,
-oraciones,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,FICHA_GALLETAS_CON_CHIPS_DE_CHOCOLATE,0.5593,3.1,0.0,0.0,0.0,
-oraciones,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.7852,2.9,1.0,1.0,1.0,1.0
-oraciones,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_LIMPIAPISOS_LAVANDA,0.3715,2.9,0.0,0.0,0.0,
-oraciones,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,FICHA_LECHE_DESLACTOSADA,0.7469,3.0,0.0,1.0,0.25,4.0
-oraciones,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_RECETAS,0.6967,3.1,1.0,1.0,1.0,1.0
-oraciones,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_PROMOCIONES,0.631,2.9,1.0,1.0,1.0,1.0
-oraciones,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.7649,3.1,1.0,1.0,1.0,1.0
-oraciones,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DATOS_PERSONALES,0.7373,3.6,1.0,1.0,1.0,1.0
-oraciones,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_PECHUGA_DE_POLLO,0.6327,3.1,1.0,1.0,1.0,1.0
-oraciones,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_LULO,0.6533,4.6,1.0,1.0,1.0,1.0
-oraciones,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.6228,3.1,1.0,1.0,1.0,1.0
-oraciones,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,FICHA_TOSTADAS_DE_PAN,0.708,2.9,0.0,1.0,0.5,2.0
-oraciones,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_DETERGENTE_LIQUIDO,0.6759,3.1,1.0,1.0,1.0,1.0
-semantico,¿Cuánto cuesta el domicilio si mi pedido es de 50.000 pesos?,POL_DOMICILIOS,POL_DOMICILIOS,0.7793,5.6,1.0,1.0,1.0,1.0
-semantico,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,POL_DOMICILIOS,0.7137,5.8,1.0,1.0,1.0,1.0
-semantico,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DOMICILIOS,0.727,5.6,1.0,1.0,1.0,1.0
-semantico,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,FICHA_BEBIDA_HIDRATANTE,0.643,5.7,0.0,0.0,0.0,
-semantico,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.7291,6.5,1.0,1.0,1.0,1.0
-semantico,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.5292,5.7,1.0,1.0,1.0,1.0
-semantico,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.8108,5.6,1.0,1.0,1.0,1.0
-semantico,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.6892,6.0,1.0,1.0,1.0,1.0
-semantico,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.7248,5.4,1.0,1.0,1.0,1.0
-semantico,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.6878,5.5,1.0,1.0,1.0,1.0
-semantico,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.5458,5.5,1.0,1.0,1.0,1.0
-semantico,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.6288,5.5,1.0,1.0,1.0,1.0
-semantico,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,MAN_CAJA,0.775,5.8,1.0,1.0,1.0,1.0
-semantico,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,FICHA_GASEOSA_COLA,0.4958,8.5,0.0,0.0,0.0,
-semantico,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,GUIA_PUNTOS_VENTA,0.6015,5.8,1.0,1.0,1.0,1.0
-semantico,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.8189,5.7,1.0,1.0,1.0,1.0
-semantico,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_CHAMPU_ANTICASPA,0.3844,9.0,0.0,0.0,0.0,
-semantico,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,GUIA_ETIQUETADO,0.82,5.7,1.0,1.0,1.0,1.0
-semantico,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_RECETAS,0.7756,5.8,1.0,1.0,1.0,1.0
-semantico,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_PROMOCIONES,0.672,5.9,1.0,1.0,1.0,1.0
-semantico,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.8241,5.5,1.0,1.0,1.0,1.0
-semantico,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DEVOLUCIONES,0.6319,5.7,0.0,1.0,0.5,2.0
-semantico,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_NUGGETS_DE_POLLO,0.7668,5.9,0.0,1.0,0.5,2.0
-semantico,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_ZANAHORIA,0.76,5.7,0.0,1.0,0.5,2.0
-semantico,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.7931,5.4,1.0,1.0,1.0,1.0
-semantico,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,FICHA_PAN_DE_BONO,0.8825,5.8,1.0,1.0,1.0,1.0
-semantico,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_DETERGENTE_LIQUIDO,0.7047,5.5,1.0,1.0,1.0,1.0
+fijo,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,GUIA_PUNTOS_VENTA,0.4454,1.9,0.0,0.0,0.0,
+fijo,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DEVOLUCIONES,0.432,1.7,0.0,1.0,0.5,2.0
+fijo,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.4086,1.9,1.0,1.0,1.0,1.0
+fijo,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DATOS_PERSONALES,0.3998,1.7,0.0,1.0,0.5,2.0
+fijo,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,POL_PROMOCIONES,0.439,1.6,0.0,0.0,0.0,
+fijo,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.4626,1.7,1.0,1.0,1.0,1.0
+fijo,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,GUIA_CAFE_CALDAS,0.391,1.7,0.0,0.0,0.0,
+fijo,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.489,1.6,1.0,1.0,1.0,1.0
+fijo,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.545,1.6,1.0,1.0,1.0,1.0
+fijo,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.3721,1.6,1.0,1.0,1.0,1.0
+fijo,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.509,2.0,1.0,1.0,1.0,1.0
+fijo,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,FICHA_BEBIDA_HIDRATANTE,0.4216,1.7,0.0,0.0,0.0,
+fijo,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,MAN_CADENA_FRIO,0.3402,1.7,0.0,0.0,0.0,
+fijo,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,FICHA_MALTA,0.5035,2.7,0.0,1.0,0.5,2.0
+fijo,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.5437,2.2,1.0,1.0,1.0,1.0
+fijo,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_PAN_DE_BONO,0.2131,2.2,0.0,0.0,0.0,
+fijo,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,GUIA_ETIQUETADO,0.3596,1.9,1.0,1.0,1.0,1.0
+fijo,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_CAFE_CALDAS,0.3963,1.7,0.0,0.0,0.0,
+fijo,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_DEVOLUCIONES,0.4554,1.7,0.0,1.0,0.5,2.0
+fijo,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.6499,1.7,1.0,1.0,1.0,1.0
+fijo,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DATOS_PERSONALES,0.5669,2.0,1.0,1.0,1.0,1.0
+fijo,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_HARINA_DE_MAIZ_PRECOCIDA,0.3711,1.7,0.0,0.0,0.0,
+fijo,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_JUGO_DE_MANGO,0.3368,1.6,0.0,0.0,0.0,
+fijo,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.4388,2.3,1.0,1.0,1.0,1.0
+fijo,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,GUIA_ETIQUETADO,0.3677,1.7,0.0,0.0,0.0,
+fijo,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_BEBIDA_HIDRATANTE,0.5242,1.8,0.0,0.0,0.0,
+oraciones,¿Cuánto cuesta el domicilio si mi pedido es de 50.000 pesos?,POL_DOMICILIOS,POL_DOMICILIOS,0.6621,2.1,1.0,1.0,1.0,1.0
+oraciones,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,POL_DOMICILIOS,0.5748,1.9,1.0,1.0,1.0,1.0
+oraciones,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DOMICILIOS,0.7589,1.7,1.0,1.0,1.0,1.0
+oraciones,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,POL_DATOS_PERSONALES,0.4832,1.7,0.0,1.0,0.25,4.0
+oraciones,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.6323,1.8,1.0,1.0,1.0,1.0
+oraciones,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,MAN_CAJA,0.4943,1.8,0.0,0.0,0.0,
+oraciones,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.7278,1.7,1.0,1.0,1.0,1.0
+oraciones,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,FICHA_BANANO_CRIOLLO,0.5847,2.1,0.0,1.0,0.5,2.0
+oraciones,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.6753,1.9,1.0,1.0,1.0,1.0
+oraciones,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.6845,1.7,1.0,1.0,1.0,1.0
+oraciones,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,POL_DOMICILIOS,0.5751,1.7,0.0,1.0,0.5,2.0
+oraciones,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,POL_DOMICILIOS,0.6096,1.8,0.0,1.0,0.5,2.0
+oraciones,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,MAN_CAJA,0.6777,1.7,1.0,1.0,1.0,1.0
+oraciones,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,POL_DEVOLUCIONES,0.4339,1.6,0.0,0.0,0.0,
+oraciones,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,FICHA_GALLETAS_CON_CHIPS_DE_CHOCOLATE,0.5593,3.0,0.0,0.0,0.0,
+oraciones,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.7852,2.1,1.0,1.0,1.0,1.0
+oraciones,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_LIMPIAPISOS_LAVANDA,0.3715,2.0,0.0,0.0,0.0,
+oraciones,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,FICHA_LECHE_DESLACTOSADA,0.7469,1.8,0.0,1.0,0.25,4.0
+oraciones,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_RECETAS,0.6967,1.8,1.0,1.0,1.0,1.0
+oraciones,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_PROMOCIONES,0.631,1.7,1.0,1.0,1.0,1.0
+oraciones,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.7649,1.8,1.0,1.0,1.0,1.0
+oraciones,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DATOS_PERSONALES,0.7373,1.8,1.0,1.0,1.0,1.0
+oraciones,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_PECHUGA_DE_POLLO,0.6327,1.7,1.0,1.0,1.0,1.0
+oraciones,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_LULO,0.6533,1.7,1.0,1.0,1.0,1.0
+oraciones,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.6228,2.3,1.0,1.0,1.0,1.0
+oraciones,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,FICHA_TOSTADAS_DE_PAN,0.708,1.7,0.0,1.0,0.5,2.0
+oraciones,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_DETERGENTE_LIQUIDO,0.6759,2.6,1.0,1.0,1.0,1.0
+semantico,¿Cuánto cuesta el domicilio si mi pedido es de 50.000 pesos?,POL_DOMICILIOS,POL_DOMICILIOS,0.7793,3.8,1.0,1.0,1.0,1.0
+semantico,¿Hasta qué hora puedo pedir un domicilio un domingo?,POL_DOMICILIOS,POL_DOMICILIOS,0.7137,3.5,1.0,1.0,1.0,1.0
+semantico,¿Puedo cancelar un pedido que ya va en camino?,POL_DOMICILIOS,POL_DOMICILIOS,0.727,3.7,1.0,1.0,1.0,1.0
+semantico,¿Cuántos días tengo para devolver un detergente?,POL_DEVOLUCIONES,FICHA_BEBIDA_HIDRATANTE,0.643,3.4,0.0,0.0,0.0,
+semantico,"Pagué con tarjeta de crédito, ¿cuánto tarda el reembolso?",POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.7291,3.3,1.0,1.0,1.0,1.0
+semantico,¿Qué me dan si me llega un producto vencido?,POL_DEVOLUCIONES,POL_DEVOLUCIONES,0.5292,3.5,1.0,1.0,1.0,1.0
+semantico,¿A qué temperatura se deben guardar los lácteos y las carnes?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.8108,3.5,1.0,1.0,1.0,1.0
+semantico,¿Por qué no se debe meter el banano en la nevera?,MAN_CADENA_FRIO,MAN_CADENA_FRIO,0.6892,3.9,1.0,1.0,1.0,1.0
+semantico,¿Cómo se calcula el stock mínimo de un producto?,MAN_INVENTARIO,MAN_INVENTARIO,0.7248,3.5,1.0,1.0,1.0,1.0
+semantico,¿Cada cuánto se hacen los conteos de inventario?,MAN_INVENTARIO,MAN_INVENTARIO,0.6878,5.2,1.0,1.0,1.0,1.0
+semantico,¿Qué licencia necesita un conductor de moto?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.5458,3.6,1.0,1.0,1.0,1.0
+semantico,¿Qué pasa si el cliente no está en casa cuando llega el domicilio?,MAN_CONDUCTORES,MAN_CONDUCTORES,0.6288,3.5,1.0,1.0,1.0,1.0
+semantico,¿Qué medios de pago aceptan en la caja?,MAN_CAJA,MAN_CAJA,0.775,3.5,1.0,1.0,1.0,1.0
+semantico,¿Qué sede cierra más tarde?,GUIA_PUNTOS_VENTA,FICHA_GASEOSA_COLA,0.4958,3.3,0.0,0.0,0.0,
+semantico,¿Cuál es la dirección del supermercado en Chipre?,GUIA_PUNTOS_VENTA,GUIA_PUNTOS_VENTA,0.6015,4.0,1.0,1.0,1.0,1.0
+semantico,¿Cuántos gramos de café se usan por taza en cafetera de goteo?,GUIA_CAFE_CALDAS,GUIA_CAFE_CALDAS,0.8189,3.4,1.0,1.0,1.0,1.0
+semantico,¿Qué significan los sellos negros octagonales de los empaques?,GUIA_ETIQUETADO,FICHA_CHAMPU_ANTICASPA,0.3844,3.4,0.0,0.0,0.0,
+semantico,¿La leche deslactosada sirve para alérgicos a la proteína de la leche?,GUIA_ETIQUETADO,GUIA_ETIQUETADO,0.82,3.6,1.0,1.0,1.0,1.0
+semantico,¿Cómo se prepara la aguapanela con queso?,GUIA_RECETAS,GUIA_RECETAS,0.7756,3.4,1.0,1.0,1.0,1.0
+semantico,¿Qué descuento tiene el café en noviembre?,POL_PROMOCIONES,POL_PROMOCIONES,0.672,3.8,1.0,1.0,1.0,1.0
+semantico,¿Se pueden acumular dos promociones en el mismo producto?,POL_PROMOCIONES,POL_PROMOCIONES,0.8241,3.5,1.0,1.0,1.0,1.0
+semantico,¿Cuánto tiempo guardan mis datos de facturación?,POL_DATOS_PERSONALES,POL_DEVOLUCIONES,0.6319,3.3,0.0,1.0,0.5,2.0
+semantico,¿Cómo se conserva la pechuga de pollo?,FICHA_PECHUGA_DE_POLLO,FICHA_NUGGETS_DE_POLLO,0.7668,3.5,0.0,1.0,0.5,2.0
+semantico,fruta ácida de cáscara naranja para hacer jugo,FICHA_LULO,FICHA_ZANAHORIA,0.76,3.3,0.0,1.0,0.5,2.0
+semantico,croquetas para gato que cuidan las vías urinarias,FICHA_ALIMENTO_SECO_PARA_GATO,FICHA_ALIMENTO_SECO_PARA_GATO,0.7931,3.3,1.0,1.0,1.0,1.0
+semantico,pan redondo hecho con almidón de yuca y queso,FICHA_PAN_DE_BONO,FICHA_PAN_DE_BONO,0.8825,3.5,1.0,1.0,1.0,1.0
+semantico,¿Qué marcas de detergente líquido venden?,FICHA_DETERGENTE_LIQUIDO,FICHA_DETERGENTE_LIQUIDO,0.7047,3.2,1.0,1.0,1.0,1.0
