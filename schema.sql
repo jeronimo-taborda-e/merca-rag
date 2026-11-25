@@ -1,668 +1,581 @@
--- =====================================================================
--- MercaRAG - Esquema relacional + vectorial (PostgreSQL + pgvector)
--- Se ejecuta automáticamente la primera vez que se crea el volumen de Docker
--- (docker-entrypoint-initdb.d). Para re-ejecutarlo: docker compose down -v
---
--- Cambios respecto a la Entrega 1 (para soportar el laboratorio multimodal):
---   * documento.codigo_doc / tipo          -> carga idempotente (ON CONFLICT)
---   * imagen.codigo_img / sha256 / ancho / alto -> no duplicar fotos
---   * embeddings_texto.n_tokens / parametros    -> experimento de chunking
---   * embeddings_texto_clip (nueva)        -> ruta imagen -> texto (CLIP 512)
---   * query_embeddings.vector_clip         -> preguntas en el espacio CLIP
---   * consulta.tipo_consulta / respuesta_llm / tiempos -> trazabilidad (RF-08)
---   * resultado.ranking / id_embedding_texto     -> qué chunk se recuperó
--- =====================================================================
+
 CREATE EXTENSION IF NOT EXISTS vector;
 
-DROP TABLE IF EXISTS query_embeddings CASCADE;
-DROP TABLE IF EXISTS embeddings_texto_clip CASCADE;
-DROP TABLE IF EXISTS embeddings_imagen CASCADE;
-DROP TABLE IF EXISTS embeddings_texto CASCADE;
-DROP TABLE IF EXISTS evaluacion CASCADE;
-DROP TABLE IF EXISTS resultado CASCADE;
-DROP TABLE IF EXISTS imagen_etiqueta CASCADE;
-DROP TABLE IF EXISTS imagen CASCADE;
-DROP TABLE IF EXISTS consulta CASCADE;
-DROP TABLE IF EXISTS domicilio CASCADE;
-DROP TABLE IF EXISTS detalle_compra CASCADE;
-DROP TABLE IF EXISTS conductor CASCADE;
-DROP TABLE IF EXISTS administrativo CASCADE;
-DROP TABLE IF EXISTS vehiculo CASCADE;
-DROP TABLE IF EXISTS direccion CASCADE;
-DROP TABLE IF EXISTS empleado CASCADE;
-DROP TABLE IF EXISTS compra CASCADE;
-DROP TABLE IF EXISTS inventario CASCADE;
-DROP TABLE IF EXISTS promocion_producto CASCADE;
-DROP TABLE IF EXISTS promocion CASCADE;
-DROP TABLE IF EXISTS cliente CASCADE;
-DROP TABLE IF EXISTS documento CASCADE;
-DROP TABLE IF EXISTS producto CASCADE;
-DROP TABLE IF EXISTS proveedor CASCADE;
-DROP TABLE IF EXISTS marca CASCADE;
-DROP TABLE IF EXISTS categoria CASCADE;
-DROP TABLE IF EXISTS punto_venta CASCADE;
-DROP TABLE IF EXISTS usuario CASCADE;
+-- ---------------------------------------------------------------- limpieza
+DROP VIEW IF EXISTS v_resultados_experimento CASCADE;
+DROP TABLE IF EXISTS
+    evaluacion, resultado, query_embeddings, consulta, pregunta_documento, pregunta,
+    embeddings_texto_clip, embeddings_texto, embeddings_imagen,
+    imagen_etiqueta, etiqueta, imagen, documento,
+    domicilio, detalle_compra, compra, vehiculo, direccion,
+    conductor, administrativo, empleado, cliente, usuario,
+    inventario, promocion_producto, promocion, producto,
+    proveedor, marca, categoria, punto_venta
+    CASCADE;
+DROP FUNCTION IF EXISTS fn_actualizar_total_compra() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_resultado() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_evaluacion() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_direccion_domicilio() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_isa_usuario() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_isa_empleado() CASCADE;
+
+
+
+CREATE TABLE punto_venta (
+    id_punto_venta  SERIAL        CONSTRAINT pk_punto_venta PRIMARY KEY,
+    nombre          VARCHAR(100)  NOT NULL CONSTRAINT uq_punto_venta_nombre UNIQUE,
+    direccion       VARCHAR(100)  NOT NULL,
+    barrio          VARCHAR(100),
+    telefono        VARCHAR(20)
+);
 
 CREATE TABLE categoria (
-    id_categoria SERIAL PRIMARY KEY,
-    nombre VARCHAR(80) NOT NULL UNIQUE
+    id_categoria    SERIAL        CONSTRAINT pk_categoria PRIMARY KEY,
+    nombre          VARCHAR(80)   NOT NULL CONSTRAINT uq_categoria_nombre UNIQUE
 );
 
 CREATE TABLE marca (
-    id_marca SERIAL PRIMARY KEY,
-    nombre VARCHAR(80) NOT NULL UNIQUE
+    id_marca        SERIAL        CONSTRAINT pk_marca PRIMARY KEY,
+    nombre          VARCHAR(80)   NOT NULL CONSTRAINT uq_marca_nombre UNIQUE
 );
 
 CREATE TABLE proveedor (
-    id_proveedor SERIAL PRIMARY KEY,
-    nombre VARCHAR(120) NOT NULL,
-    nit VARCHAR(20) NOT NULL UNIQUE,
-    telefono VARCHAR(20)
-);
-
-CREATE TABLE punto_venta (
-    id_punto_venta SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
-    direccion VARCHAR(100) NOT NULL,
-    barrio VARCHAR(100),
-    telefono VARCHAR(20)
-);
-
-CREATE TABLE usuario (
-    id_usuario SERIAL PRIMARY KEY,
-    nombre VARCHAR(120),
-    email VARCHAR(150) UNIQUE NOT NULL,
-    rol VARCHAR(20) NOT NULL
-        CHECK (rol IN ('cliente', 'empleado', 'administrativo'))
-);
-
-CREATE TABLE cliente (
-    id_cliente SERIAL PRIMARY KEY,
-    id_usuario INT NOT NULL UNIQUE,
-    documento VARCHAR(30) NOT NULL UNIQUE,
-    telefono VARCHAR(20),
-    fecha_registro DATE,
-
-    CONSTRAINT fk_cliente_usuario
-        FOREIGN KEY (id_usuario)
-        REFERENCES usuario(id_usuario)
-        ON DELETE RESTRICT
-);
-
-CREATE TABLE empleado (
-    id_empleado SERIAL PRIMARY KEY,
-    id_usuario INT NOT NULL UNIQUE,
-    id_punto_venta INT NOT NULL,
-    documento VARCHAR(30) NOT NULL UNIQUE,
-    fecha_ingreso DATE,
-    salario NUMERIC(10,2),
-
-    CONSTRAINT fk_empleado_usuario
-        FOREIGN KEY (id_usuario)
-        REFERENCES usuario(id_usuario)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_empleado_punto_venta
-        FOREIGN KEY (id_punto_venta)
-        REFERENCES punto_venta(id_punto_venta)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT ck_empleado_salario
-        CHECK (salario > 0)
-);
-
-CREATE TABLE administrativo (
-    id_empleado INT PRIMARY KEY,
-    area VARCHAR(100) NOT NULL,
-    nivel VARCHAR(50),
-
-    CONSTRAINT fk_administrativo_empleado
-        FOREIGN KEY (id_empleado)
-        REFERENCES empleado(id_empleado)
-        ON DELETE RESTRICT
-);
-
-CREATE TABLE conductor (
-    id_empleado INT PRIMARY KEY,
-    licencia VARCHAR(30) NOT NULL UNIQUE,
-    categoria VARCHAR(30),
-    vencimiento DATE,
-
-    CONSTRAINT fk_conductor_empleado
-        FOREIGN KEY (id_empleado)
-        REFERENCES empleado(id_empleado)
-        ON DELETE RESTRICT
+    id_proveedor    SERIAL        CONSTRAINT pk_proveedor PRIMARY KEY,
+    nombre          VARCHAR(120)  NOT NULL,
+    nit             VARCHAR(20)   NOT NULL CONSTRAINT uq_proveedor_nit UNIQUE,
+    telefono        VARCHAR(20)
 );
 
 CREATE TABLE producto (
-    id_producto SERIAL PRIMARY KEY,
-    id_categoria INT NOT NULL,
-    id_marca INT,
-    id_proveedor INT,
-    nombre VARCHAR(150) NOT NULL,
-    precio NUMERIC(10,2) NOT NULL,
-    codigo_barras VARCHAR(20) UNIQUE,
-
-    CONSTRAINT fk_producto_categoria
-        FOREIGN KEY (id_categoria)
-        REFERENCES categoria(id_categoria)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_producto_marca
-        FOREIGN KEY (id_marca)
-        REFERENCES marca(id_marca)
-        ON DELETE SET NULL,
-
-    CONSTRAINT fk_producto_proveedor
-        FOREIGN KEY (id_proveedor)
-        REFERENCES proveedor(id_proveedor)
-        ON DELETE SET NULL,
-
-    CONSTRAINT ck_producto_precio
-        CHECK (precio >= 0)
-);
-
-CREATE TABLE promocion (
-    id_promocion SERIAL PRIMARY KEY,
-    nombre VARCHAR(150) NOT NULL,
-    tipo_descuento VARCHAR(20) NOT NULL
-        CHECK (tipo_descuento IN ('porcentaje', 'valor_fijo')),
-    valor NUMERIC(10,2) NOT NULL,
-    fecha_inicio DATE NOT NULL,
-    fecha_fin DATE NOT NULL,
-
-    CONSTRAINT ck_promocion_valor
-        CHECK (valor > 0),
-
-    CONSTRAINT ck_promocion_fechas
-        CHECK (fecha_fin >= fecha_inicio)
-);
-
-CREATE TABLE promocion_producto (
-    id_promocion INT NOT NULL,
-    id_producto INT NOT NULL,
-
-    CONSTRAINT pk_promocion_producto
-        PRIMARY KEY (id_promocion, id_producto),
-
-    CONSTRAINT fk_promocion_producto_promocion
-        FOREIGN KEY (id_promocion)
-        REFERENCES promocion(id_promocion)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_promocion_producto_producto
-        FOREIGN KEY (id_producto)
-        REFERENCES producto(id_producto)
-        ON DELETE RESTRICT
+    id_producto     SERIAL        CONSTRAINT pk_producto PRIMARY KEY,
+    id_categoria    INT           NOT NULL,
+    id_marca        INT           NOT NULL,
+    id_proveedor    INT           NOT NULL,
+    nombre          VARCHAR(150)  NOT NULL,
+    precio          NUMERIC(10,2) NOT NULL CONSTRAINT ck_producto_precio CHECK (precio > 0),
+    codigo_barras   VARCHAR(20)   CONSTRAINT uq_producto_codigo_barras UNIQUE,
+    CONSTRAINT fk_producto_categoria FOREIGN KEY (id_categoria) REFERENCES categoria(id_categoria) ON DELETE RESTRICT,
+    CONSTRAINT fk_producto_marca     FOREIGN KEY (id_marca)     REFERENCES marca(id_marca)         ON DELETE RESTRICT,
+    CONSTRAINT fk_producto_proveedor FOREIGN KEY (id_proveedor) REFERENCES proveedor(id_proveedor) ON DELETE RESTRICT
 );
 
 CREATE TABLE inventario (
-    id_punto_venta INT NOT NULL,
-    id_producto INT NOT NULL,
-    stock INT NOT NULL,
-    stock_minimo INT NOT NULL,
-    actualizado DATE DEFAULT CURRENT_DATE,
-
-    CONSTRAINT pk_inventario
-        PRIMARY KEY (id_punto_venta, id_producto),
-
-    CONSTRAINT ck_inventario_stock
-        CHECK (stock >= 0),
-
-    CONSTRAINT ck_inventario_stock_minimo
-        CHECK (stock_minimo >= 0),
-
-    CONSTRAINT fk_inventario_punto_venta
-        FOREIGN KEY (id_punto_venta)
-        REFERENCES punto_venta(id_punto_venta)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_inventario_producto
-        FOREIGN KEY (id_producto)
-        REFERENCES producto(id_producto)
-        ON DELETE RESTRICT
+    id_punto_venta  INT           NOT NULL,
+    id_producto     INT           NOT NULL,
+    stock           INT           NOT NULL CONSTRAINT ck_inventario_stock CHECK (stock >= 0),
+    stock_minimo    INT           NOT NULL DEFAULT 0 CONSTRAINT ck_inventario_stock_minimo CHECK (stock_minimo >= 0),
+    actualizado     DATE          NOT NULL DEFAULT CURRENT_DATE,
+    CONSTRAINT pk_inventario PRIMARY KEY (id_punto_venta, id_producto),
+    CONSTRAINT fk_inventario_punto_venta FOREIGN KEY (id_punto_venta) REFERENCES punto_venta(id_punto_venta) ON DELETE RESTRICT,
+    CONSTRAINT fk_inventario_producto    FOREIGN KEY (id_producto)    REFERENCES producto(id_producto)       ON DELETE RESTRICT
 );
 
-CREATE TABLE compra (
-    id_compra SERIAL PRIMARY KEY,
-    id_cliente INT NOT NULL,
-    id_punto_venta INT NOT NULL,
-    fecha TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    canal VARCHAR(20) NOT NULL
-        CHECK (canal IN ('tienda', 'domicilio')),
-    total NUMERIC(10,2),
-
-    CONSTRAINT ck_compra_total
-        CHECK (total >= 0),
-
-    CONSTRAINT fk_compra_cliente
-        FOREIGN KEY (id_cliente)
-        REFERENCES cliente(id_cliente)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_compra_punto_venta
-        FOREIGN KEY (id_punto_venta)
-        REFERENCES punto_venta(id_punto_venta)
-        ON DELETE RESTRICT
+CREATE TABLE promocion (
+    id_promocion    SERIAL        CONSTRAINT pk_promocion PRIMARY KEY,
+    nombre          VARCHAR(150)  NOT NULL,
+    tipo_descuento  VARCHAR(20)   NOT NULL CONSTRAINT ck_promocion_tipo CHECK (tipo_descuento IN ('porcentaje','valor_fijo')),
+    valor           NUMERIC(10,2) NOT NULL CONSTRAINT ck_promocion_valor CHECK (valor > 0),
+    fecha_inicio    DATE          NOT NULL,
+    fecha_fin       DATE          NOT NULL,
+    CONSTRAINT ck_promocion_fechas     CHECK (fecha_fin >= fecha_inicio),
+    CONSTRAINT ck_promocion_porcentaje CHECK (tipo_descuento <> 'porcentaje' OR valor <= 100)
 );
 
-CREATE TABLE detalle_compra (
-    id_compra INT NOT NULL,
-    id_producto INT NOT NULL,
-    cantidad INT NOT NULL,
-    precio_unitario NUMERIC(10,2) NOT NULL,
+CREATE TABLE promocion_producto (
+    id_promocion    INT NOT NULL,
+    id_producto     INT NOT NULL,
+    CONSTRAINT pk_promocion_producto PRIMARY KEY (id_promocion, id_producto),
+    CONSTRAINT fk_promocion_producto_promocion FOREIGN KEY (id_promocion) REFERENCES promocion(id_promocion) ON DELETE CASCADE,
+    CONSTRAINT fk_promocion_producto_producto  FOREIGN KEY (id_producto)  REFERENCES producto(id_producto)   ON DELETE RESTRICT
+);
 
-    CONSTRAINT pk_detalle_compra
-        PRIMARY KEY (id_compra, id_producto),
 
-    CONSTRAINT ck_detalle_compra_cantidad
-        CHECK (cantidad > 0),
 
-    CONSTRAINT ck_detalle_compra_precio
-        CHECK (precio_unitario >= 0),
+CREATE TABLE usuario (
+    id_usuario      SERIAL        CONSTRAINT pk_usuario PRIMARY KEY,
+    nombre          VARCHAR(120)  NOT NULL,
+    email           VARCHAR(150)  NOT NULL CONSTRAINT uq_usuario_email UNIQUE,
+    tipo            VARCHAR(10)   NOT NULL CONSTRAINT ck_usuario_tipo CHECK (tipo IN ('cliente','empleado')),
+    CONSTRAINT uq_usuario_id_tipo UNIQUE (id_usuario, tipo)
+);
 
-    CONSTRAINT fk_detalle_compra_compra
-        FOREIGN KEY (id_compra)
-        REFERENCES compra(id_compra)
-        ON DELETE RESTRICT,
+CREATE TABLE cliente (
+    id_cliente      SERIAL        CONSTRAINT pk_cliente PRIMARY KEY,
+    id_usuario      INT           NOT NULL CONSTRAINT uq_cliente_usuario UNIQUE,
+    tipo_usuario    VARCHAR(10)   NOT NULL DEFAULT 'cliente' CONSTRAINT ck_cliente_tipo CHECK (tipo_usuario = 'cliente'),
+    documento       VARCHAR(30)   NOT NULL CONSTRAINT uq_cliente_documento UNIQUE,
+    telefono        VARCHAR(20),
+    fecha_registro  DATE          NOT NULL DEFAULT CURRENT_DATE,
+    CONSTRAINT fk_cliente_usuario FOREIGN KEY (id_usuario, tipo_usuario)
+        REFERENCES usuario(id_usuario, tipo) ON DELETE CASCADE
+);
 
-    CONSTRAINT fk_detalle_compra_producto
-        FOREIGN KEY (id_producto)
-        REFERENCES producto(id_producto)
-        ON DELETE RESTRICT
+CREATE TABLE empleado (
+    id_empleado     SERIAL        CONSTRAINT pk_empleado PRIMARY KEY,
+    id_usuario      INT           NOT NULL CONSTRAINT uq_empleado_usuario UNIQUE,
+    tipo_usuario    VARCHAR(10)   NOT NULL DEFAULT 'empleado' CONSTRAINT ck_empleado_tipo_usuario CHECK (tipo_usuario = 'empleado'),
+    tipo_empleado   VARCHAR(15)   NOT NULL CONSTRAINT ck_empleado_tipo CHECK (tipo_empleado IN ('administrativo','conductor')),
+    id_punto_venta  INT           NOT NULL,
+    documento       VARCHAR(30)   NOT NULL CONSTRAINT uq_empleado_documento UNIQUE,
+    fecha_ingreso   DATE          NOT NULL,
+    salario         NUMERIC(10,2) NOT NULL CONSTRAINT ck_empleado_salario CHECK (salario > 0),
+    CONSTRAINT uq_empleado_id_tipo UNIQUE (id_empleado, tipo_empleado),
+    CONSTRAINT fk_empleado_usuario FOREIGN KEY (id_usuario, tipo_usuario)
+        REFERENCES usuario(id_usuario, tipo) ON DELETE CASCADE,
+    CONSTRAINT fk_empleado_punto_venta FOREIGN KEY (id_punto_venta)
+        REFERENCES punto_venta(id_punto_venta) ON DELETE RESTRICT
+);
+
+CREATE TABLE administrativo (
+    id_empleado     INT           CONSTRAINT pk_administrativo PRIMARY KEY,
+    tipo_empleado   VARCHAR(15)   NOT NULL DEFAULT 'administrativo' CONSTRAINT ck_administrativo_tipo CHECK (tipo_empleado = 'administrativo'),
+    area            VARCHAR(100)  NOT NULL,
+    nivel           VARCHAR(50),
+    CONSTRAINT fk_administrativo_empleado FOREIGN KEY (id_empleado, tipo_empleado)
+        REFERENCES empleado(id_empleado, tipo_empleado) ON DELETE CASCADE
+);
+
+CREATE TABLE conductor (
+    id_empleado           INT          CONSTRAINT pk_conductor PRIMARY KEY,
+    tipo_empleado         VARCHAR(15)  NOT NULL DEFAULT 'conductor' CONSTRAINT ck_conductor_tipo CHECK (tipo_empleado = 'conductor'),
+    licencia              VARCHAR(30)  NOT NULL CONSTRAINT uq_conductor_licencia UNIQUE,
+    categoria_licencia    VARCHAR(5)   NOT NULL CONSTRAINT ck_conductor_categoria CHECK (categoria_licencia IN ('A1','A2','B1','B2','C1','C2')),
+    vencimiento_licencia  DATE         NOT NULL,
+    CONSTRAINT fk_conductor_empleado FOREIGN KEY (id_empleado, tipo_empleado)
+        REFERENCES empleado(id_empleado, tipo_empleado) ON DELETE CASCADE
 );
 
 CREATE TABLE direccion (
-    id_direccion SERIAL PRIMARY KEY,
-    id_cliente INT NOT NULL,
-    direccion VARCHAR(200) NOT NULL,
-    barrio VARCHAR(100),
-    referencia VARCHAR(250),
-
-    CONSTRAINT fk_direccion_cliente
-        FOREIGN KEY (id_cliente)
-        REFERENCES cliente(id_cliente)
-        ON DELETE RESTRICT
+    id_direccion    SERIAL        CONSTRAINT pk_direccion PRIMARY KEY,
+    id_cliente      INT           NOT NULL,
+    direccion       VARCHAR(200)  NOT NULL,
+    barrio          VARCHAR(100),
+    referencia      VARCHAR(250),
+    CONSTRAINT fk_direccion_cliente FOREIGN KEY (id_cliente) REFERENCES cliente(id_cliente) ON DELETE RESTRICT
 );
 
 CREATE TABLE vehiculo (
-    id_vehiculo SERIAL PRIMARY KEY,
-    id_punto_venta INT NOT NULL,
-    placa VARCHAR(20) NOT NULL UNIQUE,
-    tipo VARCHAR(20) NOT NULL
-        CHECK (tipo IN ('moto', 'furgoneta', 'camioneta')),
-    capacidad_kg NUMERIC(10,2),
-    estado VARCHAR(20) NOT NULL DEFAULT 'disponible'
-        CHECK (estado IN ('disponible', 'en_ruta', 'mantenimiento')),
+    id_vehiculo     SERIAL        CONSTRAINT pk_vehiculo PRIMARY KEY,
+    id_punto_venta  INT           NOT NULL,
+    placa           VARCHAR(20)   NOT NULL CONSTRAINT uq_vehiculo_placa UNIQUE,
+    tipo            VARCHAR(20)   NOT NULL CONSTRAINT ck_vehiculo_tipo CHECK (tipo IN ('moto','furgoneta','camioneta')),
+    capacidad_kg    NUMERIC(10,2) NOT NULL CONSTRAINT ck_vehiculo_capacidad CHECK (capacidad_kg > 0),
+    estado          VARCHAR(20)   NOT NULL DEFAULT 'disponible'
+                    CONSTRAINT ck_vehiculo_estado CHECK (estado IN ('disponible','en_ruta','mantenimiento')),
+    CONSTRAINT fk_vehiculo_punto_venta FOREIGN KEY (id_punto_venta) REFERENCES punto_venta(id_punto_venta) ON DELETE RESTRICT
+);
 
-    CONSTRAINT ck_vehiculo_capacidad
-        CHECK (capacidad_kg > 0),
+CREATE TABLE compra (
+    id_compra       SERIAL        CONSTRAINT pk_compra PRIMARY KEY,
+    id_cliente      INT           NOT NULL,
+    id_punto_venta  INT           NOT NULL,
+    fecha           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    canal           VARCHAR(20)   NOT NULL CONSTRAINT ck_compra_canal CHECK (canal IN ('tienda','domicilio')),
+    total           NUMERIC(12,2) NOT NULL DEFAULT 0 CONSTRAINT ck_compra_total CHECK (total >= 0),   -- derivado (trigger)
+    CONSTRAINT fk_compra_cliente     FOREIGN KEY (id_cliente)     REFERENCES cliente(id_cliente)         ON DELETE RESTRICT,
+    CONSTRAINT fk_compra_punto_venta FOREIGN KEY (id_punto_venta) REFERENCES punto_venta(id_punto_venta) ON DELETE RESTRICT
+);
 
-    CONSTRAINT fk_vehiculo_punto_venta
-        FOREIGN KEY (id_punto_venta)
-        REFERENCES punto_venta(id_punto_venta)
-        ON DELETE RESTRICT
+CREATE TABLE detalle_compra (
+    id_compra        INT           NOT NULL,
+    id_producto      INT           NOT NULL,
+    cantidad         INT           NOT NULL CONSTRAINT ck_detalle_compra_cantidad CHECK (cantidad > 0),
+    precio_unitario  NUMERIC(10,2) NOT NULL CONSTRAINT ck_detalle_compra_precio CHECK (precio_unitario >= 0),
+    CONSTRAINT pk_detalle_compra PRIMARY KEY (id_compra, id_producto),
+    CONSTRAINT fk_detalle_compra_compra   FOREIGN KEY (id_compra)   REFERENCES compra(id_compra)     ON DELETE CASCADE,
+    CONSTRAINT fk_detalle_compra_producto FOREIGN KEY (id_producto) REFERENCES producto(id_producto) ON DELETE RESTRICT
 );
 
 CREATE TABLE domicilio (
-    id_domicilio SERIAL PRIMARY KEY,
-    id_compra INT NOT NULL UNIQUE,
-    id_direccion INT NOT NULL,
-    id_vehiculo INT,
-    id_conductor INT,
-    estado VARCHAR(20) NOT NULL DEFAULT 'pendiente'
-        CHECK (estado IN ('pendiente', 'en_ruta', 'entregado', 'cancelado')),
-    hora_entrega TIMESTAMP,
-
-    CONSTRAINT fk_domicilio_compra
-        FOREIGN KEY (id_compra)
-        REFERENCES compra(id_compra)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_domicilio_direccion
-        FOREIGN KEY (id_direccion)
-        REFERENCES direccion(id_direccion)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_domicilio_vehiculo
-        FOREIGN KEY (id_vehiculo)
-        REFERENCES vehiculo(id_vehiculo)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_domicilio_conductor
-        FOREIGN KEY (id_conductor)
-        REFERENCES conductor(id_empleado)
-        ON DELETE RESTRICT
+    id_domicilio    SERIAL        CONSTRAINT pk_domicilio PRIMARY KEY,
+    id_compra       INT           NOT NULL CONSTRAINT uq_domicilio_compra UNIQUE,   -- compra 1 : 0..1 domicilio
+    id_direccion    INT           NOT NULL,                                          -- direccion 1 : N domicilio
+    id_vehiculo     INT,                                                             -- se asignan al despachar
+    id_conductor    INT,
+    estado          VARCHAR(20)   NOT NULL DEFAULT 'pendiente'
+                    CONSTRAINT ck_domicilio_estado CHECK (estado IN ('pendiente','en_ruta','entregado','cancelado')),
+    hora_entrega    TIMESTAMP,
+    CONSTRAINT ck_domicilio_asignacion CHECK (
+        estado IN ('pendiente','cancelado') OR (id_conductor IS NOT NULL AND id_vehiculo IS NOT NULL)),
+    CONSTRAINT ck_domicilio_hora CHECK ((estado = 'entregado') = (hora_entrega IS NOT NULL)),
+    CONSTRAINT fk_domicilio_compra    FOREIGN KEY (id_compra)    REFERENCES compra(id_compra)       ON DELETE RESTRICT,
+    CONSTRAINT fk_domicilio_direccion FOREIGN KEY (id_direccion) REFERENCES direccion(id_direccion) ON DELETE RESTRICT,
+    CONSTRAINT fk_domicilio_vehiculo  FOREIGN KEY (id_vehiculo)  REFERENCES vehiculo(id_vehiculo)   ON DELETE RESTRICT,
+    CONSTRAINT fk_domicilio_conductor FOREIGN KEY (id_conductor) REFERENCES conductor(id_empleado)  ON DELETE RESTRICT
 );
+
+
 
 CREATE TABLE documento (
-    id_doc SERIAL PRIMARY KEY,
-    id_producto INT,
-    codigo_doc VARCHAR(60) NOT NULL UNIQUE,
-    tipo VARCHAR(20) NOT NULL DEFAULT 'ficha'
-        CHECK (tipo IN ('ficha', 'politica', 'manual', 'guia')),
-    titulo VARCHAR(200) NOT NULL,
-    idioma VARCHAR(10) NOT NULL,
-    fecha DATE,
-    fuente VARCHAR(255),
-    contenido_texto TEXT NOT NULL,
-
-    CONSTRAINT fk_documento_producto
-        FOREIGN KEY (id_producto)
-        REFERENCES producto(id_producto)
-        ON DELETE SET NULL
+    id_doc           SERIAL        CONSTRAINT pk_documento PRIMARY KEY,
+    id_producto      INT,                                    -- solo las fichas describen un producto
+    codigo_doc       VARCHAR(60)   NOT NULL CONSTRAINT uq_documento_codigo UNIQUE,
+    tipo             VARCHAR(20)   NOT NULL
+                     CONSTRAINT ck_documento_tipo CHECK (tipo IN ('ficha','politica','manual','guia')),
+    titulo           VARCHAR(200)  NOT NULL,
+    idioma           CHAR(2)       NOT NULL DEFAULT 'es' CONSTRAINT ck_documento_idioma CHECK (idioma IN ('es','en')),
+    fecha            DATE,
+    fuente           VARCHAR(255)  NOT NULL,
+    contenido_texto  TEXT          NOT NULL,
+    CONSTRAINT ck_documento_ficha CHECK ((tipo = 'ficha') = (id_producto IS NOT NULL)),
+    CONSTRAINT fk_documento_producto FOREIGN KEY (id_producto) REFERENCES producto(id_producto) ON DELETE RESTRICT
 );
 
+-- Imagen tiene un único dueño: el documento (la ficha) que la contiene.
+-- El producto que muestra se obtiene por imagen -> documento -> producto.
 CREATE TABLE imagen (
-    id_img SERIAL PRIMARY KEY,
-    id_doc INT,
-    id_producto INT,
-    codigo_img VARCHAR(60) NOT NULL UNIQUE,
-    ruta_archivo TEXT NOT NULL,
-    sha256 CHAR(64) NOT NULL UNIQUE,
-    ancho INT CHECK (ancho > 0),
-    alto INT CHECK (alto > 0),
-    descripcion TEXT,
+    id_img           SERIAL        CONSTRAINT pk_imagen PRIMARY KEY,
+    id_doc           INT           NOT NULL,
+    codigo_img       VARCHAR(60)   NOT NULL CONSTRAINT uq_imagen_codigo UNIQUE,
+    ruta_archivo     TEXT          NOT NULL,
+    sha256           CHAR(64)      NOT NULL CONSTRAINT uq_imagen_sha256 UNIQUE,   -- la misma foto no se duplica
+    ancho            INT           CONSTRAINT ck_imagen_ancho CHECK (ancho > 0),
+    alto             INT           CONSTRAINT ck_imagen_alto  CHECK (alto > 0),
+    descripcion      VARCHAR(200),                          -- corta: el codificador de texto de CLIP trunca
+    CONSTRAINT fk_imagen_documento FOREIGN KEY (id_doc) REFERENCES documento(id_doc) ON DELETE CASCADE
+);
 
-    CONSTRAINT fk_imagen_documento
-        FOREIGN KEY (id_doc)
-        REFERENCES documento(id_doc)
-        ON DELETE SET NULL,
-
-    CONSTRAINT fk_imagen_producto
-        FOREIGN KEY (id_producto)
-        REFERENCES producto(id_producto)
-        ON DELETE SET NULL
+-- Etiquetas: catálogo único + tabla asociativa (N:M)
+CREATE TABLE etiqueta (
+    id_etiqueta      SERIAL        CONSTRAINT pk_etiqueta PRIMARY KEY,
+    nombre           VARCHAR(50)   NOT NULL CONSTRAINT uq_etiqueta_nombre UNIQUE
 );
 
 CREATE TABLE imagen_etiqueta (
-    id_img_etiqueta SERIAL PRIMARY KEY,
-    id_img INT NOT NULL,
-    etiqueta VARCHAR(100) NOT NULL,
+    id_img           INT NOT NULL,
+    id_etiqueta      INT NOT NULL,
+    CONSTRAINT pk_imagen_etiqueta PRIMARY KEY (id_img, id_etiqueta),
+    CONSTRAINT fk_imagen_etiqueta_imagen   FOREIGN KEY (id_img)      REFERENCES imagen(id_img)        ON DELETE CASCADE,
+    CONSTRAINT fk_imagen_etiqueta_etiqueta FOREIGN KEY (id_etiqueta) REFERENCES etiqueta(id_etiqueta) ON DELETE RESTRICT
+);
 
-    CONSTRAINT uq_imagen_etiqueta
-        UNIQUE (id_img, etiqueta),
+-- Conjunto de evaluación: preguntas con respuesta de referencia (ground truth), redactadas
+-- ANTES del experimento (data/evaluacion/preguntas.csv), y los documentos que las responden.
+CREATE TABLE pregunta (
+    id_pregunta      SERIAL        CONSTRAINT pk_pregunta PRIMARY KEY,
+    codigo_pregunta  VARCHAR(10)   NOT NULL CONSTRAINT uq_pregunta_codigo UNIQUE,
+    texto_pregunta   TEXT          NOT NULL CONSTRAINT uq_pregunta_texto UNIQUE,
+    ground_truth     TEXT          NOT NULL,
+    tipo             VARCHAR(16)   NOT NULL
+                     CONSTRAINT ck_pregunta_tipo CHECK (tipo IN ('ficha','politica','manual','guia','multidocumento')),
+    fecha_creacion   DATE          NOT NULL DEFAULT CURRENT_DATE
+);
 
-    CONSTRAINT fk_imagen_etiqueta_imagen
-        FOREIGN KEY (id_img)
-        REFERENCES imagen(id_img)
-        ON DELETE CASCADE
+CREATE TABLE pregunta_documento (
+    id_pregunta      INT NOT NULL,
+    id_doc           INT NOT NULL,
+    CONSTRAINT pk_pregunta_documento PRIMARY KEY (id_pregunta, id_doc),
+    CONSTRAINT fk_pregunta_documento_pregunta  FOREIGN KEY (id_pregunta) REFERENCES pregunta(id_pregunta) ON DELETE CASCADE,
+    CONSTRAINT fk_pregunta_documento_documento FOREIGN KEY (id_doc)      REFERENCES documento(id_doc)     ON DELETE RESTRICT
 );
 
 CREATE TABLE consulta (
-    id_consulta SERIAL PRIMARY KEY,
-    id_usuario INT NOT NULL,
-    texto_pregunta TEXT NOT NULL,
-    tipo_consulta VARCHAR(20) NOT NULL DEFAULT 'texto_texto'
-        CHECK (tipo_consulta IN ('texto_texto', 'texto_imagen', 'imagen_imagen',
-                                 'imagen_texto', 'hibrida', 'rag')),
-    estrategia_chunking VARCHAR(20)
-        CHECK (estrategia_chunking IN ('fijo', 'oraciones', 'semantico')),
-    ruta_imagen_consulta TEXT,
-    respuesta_llm TEXT,
-    modelo_llm VARCHAR(100),
-    tiempo_recuperacion_ms NUMERIC(10,2) CHECK (tiempo_recuperacion_ms >= 0),
-    tiempo_total_ms NUMERIC(10,2) CHECK (tiempo_total_ms >= 0),
-    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_consulta_usuario
-        FOREIGN KEY (id_usuario)
-        REFERENCES usuario(id_usuario)
-        ON DELETE RESTRICT
+    id_consulta             SERIAL        CONSTRAINT pk_consulta PRIMARY KEY,
+    id_usuario              INT           NOT NULL,
+    id_pregunta             INT,                    -- solo en las corridas del experimento
+    texto_pregunta          TEXT,                   -- solo en consultas libres (si hay pregunta, el texto está allá)
+    ruta_imagen_consulta    TEXT,                   -- solo en consultas que parten de una foto
+    tipo_consulta           VARCHAR(20)   NOT NULL
+                            CONSTRAINT ck_consulta_tipo CHECK (tipo_consulta IN ('texto_texto','texto_imagen','imagen_imagen',
+                                                                                 'imagen_texto','hibrida','rag')),
+    estrategia_chunking     VARCHAR(20)
+                            CONSTRAINT ck_consulta_estrategia CHECK (estrategia_chunking IN ('fijo','oraciones','semantico')),
+    top_k                   SMALLINT      NOT NULL DEFAULT 5 CONSTRAINT ck_consulta_top_k CHECK (top_k BETWEEN 1 AND 50),
+    respuesta_llm           TEXT,
+    modelo_llm              VARCHAR(100),
+    tiempo_recuperacion_ms  NUMERIC(10,2) CONSTRAINT ck_consulta_t_recuperacion CHECK (tiempo_recuperacion_ms >= 0),
+    tiempo_total_ms         NUMERIC(10,2) CONSTRAINT ck_consulta_t_total CHECK (tiempo_total_ms >= 0),
+    fecha                   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- la entrada es una foto, o bien un texto que vive en un solo lugar (pregunta o texto libre)
+    CONSTRAINT ck_consulta_entrada CHECK (
+        (tipo_consulta IN ('imagen_imagen','imagen_texto')
+             AND ruta_imagen_consulta IS NOT NULL AND id_pregunta IS NULL AND texto_pregunta IS NULL)
+        OR
+        (tipo_consulta NOT IN ('imagen_imagen','imagen_texto')
+             AND ruta_imagen_consulta IS NULL AND num_nonnulls(id_pregunta, texto_pregunta) = 1)),
+    -- la estrategia aplica cuando se recuperan chunks y no aplica cuando solo se recuperan imágenes
+    CONSTRAINT ck_consulta_estrategia_tipo CHECK (
+        (tipo_consulta IN ('texto_imagen','imagen_imagen')) = (estrategia_chunking IS NULL)),
+    -- las corridas del experimento son RAG completo (recuperar + generar)
+    CONSTRAINT ck_consulta_pregunta_rag CHECK (id_pregunta IS NULL OR tipo_consulta = 'rag'),
+    CONSTRAINT ck_consulta_tiempos CHECK (tiempo_total_ms IS NULL OR tiempo_recuperacion_ms IS NULL
+                                          OR tiempo_total_ms >= tiempo_recuperacion_ms),
+    CONSTRAINT ck_consulta_modelo_llm CHECK (respuesta_llm IS NULL OR modelo_llm IS NOT NULL),
+    -- una corrida por pregunta y estrategia
+    CONSTRAINT uq_consulta_pregunta_estrategia UNIQUE (id_pregunta, estrategia_chunking),
+    CONSTRAINT fk_consulta_usuario  FOREIGN KEY (id_usuario)  REFERENCES usuario(id_usuario)   ON DELETE RESTRICT,
+    CONSTRAINT fk_consulta_pregunta FOREIGN KEY (id_pregunta) REFERENCES pregunta(id_pregunta) ON DELETE RESTRICT
 );
 
-CREATE TABLE resultado (
-    id_resultado SERIAL PRIMARY KEY,
-    id_consulta INT NOT NULL,
-    id_doc INT,
-    id_img INT,
-    id_embedding_texto INT,
-    ranking INT NOT NULL CHECK (ranking > 0),
-    score_similitud NUMERIC(10,8) NOT NULL,
-
-    CONSTRAINT uq_resultado_ranking
-        UNIQUE (id_consulta, ranking),
-
-    CONSTRAINT ck_resultado_recurso
-        CHECK (id_doc IS NOT NULL OR id_img IS NOT NULL),
-
-    CONSTRAINT fk_resultado_consulta
-        FOREIGN KEY (id_consulta)
-        REFERENCES consulta(id_consulta)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_resultado_documento
-        FOREIGN KEY (id_doc)
-        REFERENCES documento(id_doc)
-        ON DELETE RESTRICT,
-
-    CONSTRAINT fk_resultado_imagen
-        FOREIGN KEY (id_img)
-        REFERENCES imagen(id_img)
-        ON DELETE RESTRICT
-);
--- La FK hacia el chunk se agrega después de crear embeddings_texto (ver abajo).
-
-CREATE TABLE evaluacion (
-    id_eval SERIAL PRIMARY KEY,
-    id_consulta INT NOT NULL UNIQUE,
-    faithfulness NUMERIC(4,3),
-    answer_relevancy NUMERIC(4,3),
-    context_recall NUMERIC(4,3),
-    modelo_eval VARCHAR(100),
-    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT ck_evaluacion_faithfulness
-        CHECK (faithfulness BETWEEN 0 AND 1),
-
-    CONSTRAINT ck_evaluacion_answer_relevancy
-        CHECK (answer_relevancy BETWEEN 0 AND 1),
-
-    CONSTRAINT ck_evaluacion_context_recall
-        CHECK (context_recall BETWEEN 0 AND 1),
-
-    CONSTRAINT fk_evaluacion_consulta
-        FOREIGN KEY (id_consulta)
-        REFERENCES consulta(id_consulta)
-        ON DELETE RESTRICT
-);
-
--- =====================================================================
--- EMBEDDINGS
--- Debemos tener pgvector.
--- =====================================================================
 
 CREATE TABLE embeddings_texto (
-    id_embedding SERIAL PRIMARY KEY,
-    id_doc INT NOT NULL,
-    chunk_id INT NOT NULL,
-    estrategia_chunking VARCHAR(20) NOT NULL
-        CHECK (estrategia_chunking IN ('fijo', 'oraciones', 'semantico')),
-    contenido_chunk TEXT NOT NULL,
-    n_tokens INT CHECK (n_tokens > 0),
-    parametros JSONB,
-    vector_embedding VECTOR(384) NOT NULL,
-    modelo VARCHAR(100),
-
-    CONSTRAINT uq_embeddings_texto_chunk
-        UNIQUE (id_doc, estrategia_chunking, chunk_id),
-
-    CONSTRAINT fk_embeddings_texto_documento
-        FOREIGN KEY (id_doc)
-        REFERENCES documento(id_doc)
-        ON DELETE RESTRICT
+    id_embedding         SERIAL        CONSTRAINT pk_embeddings_texto PRIMARY KEY,
+    id_doc               INT           NOT NULL,
+    chunk_id             INT           NOT NULL CONSTRAINT ck_embeddings_texto_chunk_id CHECK (chunk_id >= 0),
+    estrategia_chunking  VARCHAR(20)   NOT NULL
+                         CONSTRAINT ck_embeddings_texto_estrategia CHECK (estrategia_chunking IN ('fijo','oraciones','semantico')),
+    contenido_chunk      TEXT          NOT NULL,
+    -- tokens de lo que realmente lee el modelo ("passage: " + título + chunk): nunca más de 512,
+    -- así ningún chunk se trunca al vectorizar
+    n_tokens             SMALLINT      NOT NULL CONSTRAINT ck_embeddings_texto_tokens CHECK (n_tokens BETWEEN 1 AND 512),
+    parametros           JSONB         NOT NULL,
+    vector_embedding     VECTOR(384)   NOT NULL,
+    modelo               VARCHAR(100)  NOT NULL,
+    CONSTRAINT uq_embeddings_texto_chunk UNIQUE (id_doc, estrategia_chunking, chunk_id),
+    CONSTRAINT fk_embeddings_texto_documento FOREIGN KEY (id_doc) REFERENCES documento(id_doc) ON DELETE CASCADE
 );
 
--- Mismo chunk, pero en el espacio CLIP (512): permite la ruta imagen -> texto.
--- 1:1 con embeddings_texto; si se borra el chunk se borra su vector CLIP.
+-- El mismo chunk en el espacio CLIP (512), solo para la ruta exploratoria imagen -> texto.
+-- 1:1 con embeddings_texto (su PK es la FK).
 CREATE TABLE embeddings_texto_clip (
-    id_embedding INT PRIMARY KEY,
-    vector_embedding VECTOR(512) NOT NULL,
-    modelo VARCHAR(100),
-
-    CONSTRAINT fk_embeddings_texto_clip_chunk
-        FOREIGN KEY (id_embedding)
-        REFERENCES embeddings_texto(id_embedding)
-        ON DELETE CASCADE
+    id_embedding         INT           CONSTRAINT pk_embeddings_texto_clip PRIMARY KEY,
+    vector_embedding     VECTOR(512)   NOT NULL,
+    modelo               VARCHAR(100)  NOT NULL,
+    CONSTRAINT fk_embeddings_texto_clip_chunk FOREIGN KEY (id_embedding)
+        REFERENCES embeddings_texto(id_embedding) ON DELETE CASCADE
 );
 
 CREATE TABLE embeddings_imagen (
-    id_embedding SERIAL PRIMARY KEY,
-    id_img INT NOT NULL,
-    vector_embedding VECTOR(512) NOT NULL,
-    modelo VARCHAR(100),
-
-    CONSTRAINT uq_embeddings_imagen_modelo
-        UNIQUE (id_img, modelo),
-
-    CONSTRAINT fk_embeddings_imagen_imagen
-        FOREIGN KEY (id_img)
-        REFERENCES imagen(id_img)
-        ON DELETE RESTRICT
+    id_embedding         SERIAL        CONSTRAINT pk_embeddings_imagen PRIMARY KEY,
+    id_img               INT           NOT NULL CONSTRAINT uq_embeddings_imagen_img UNIQUE,   -- 1:1 con imagen
+    vector_embedding     VECTOR(512)   NOT NULL,                                               -- píxeles (PIL + CLIP)
+    modelo               VARCHAR(100)  NOT NULL,
+    vector_descripcion   VECTOR(512),                                                          -- descripción + etiquetas
+    modelo_descripcion   VARCHAR(100),
+    CONSTRAINT ck_embeddings_imagen_desc CHECK ((vector_descripcion IS NULL) = (modelo_descripcion IS NULL)),
+    CONSTRAINT fk_embeddings_imagen_imagen FOREIGN KEY (id_img) REFERENCES imagen(id_img) ON DELETE CASCADE
 );
 
 CREATE TABLE query_embeddings (
-    id_qemb SERIAL PRIMARY KEY,
-    id_consulta INT NOT NULL UNIQUE,
-    vector_embedding VECTOR(384),          -- pregunta en el espacio MiniLM
-    vector_clip VECTOR(512),               -- pregunta (texto o foto) en el espacio CLIP
-    modelo VARCHAR(100),
-
-    CONSTRAINT ck_query_embeddings_algun_vector
-        CHECK (vector_embedding IS NOT NULL OR vector_clip IS NOT NULL),
-
-    CONSTRAINT fk_query_embeddings_consulta
-        FOREIGN KEY (id_consulta)
-        REFERENCES consulta(id_consulta)
-        ON DELETE RESTRICT
+    id_qemb              SERIAL        CONSTRAINT pk_query_embeddings PRIMARY KEY,
+    id_consulta          INT           NOT NULL CONSTRAINT uq_query_embeddings_consulta UNIQUE,   -- 1:1 con consulta
+    vector_texto         VECTOR(384),          -- e5 ("query: "): se compara con embeddings_texto
+    modelo_texto         VARCHAR(100),
+    vector_clip          VECTOR(512),          -- CLIP (texto o foto): se compara con embeddings_imagen
+    modelo_clip          VARCHAR(100),
+    CONSTRAINT ck_query_embeddings_alguno     CHECK (num_nonnulls(vector_texto, vector_clip) >= 1),
+    CONSTRAINT ck_query_embeddings_modelo_txt CHECK ((vector_texto IS NULL) = (modelo_texto IS NULL)),
+    CONSTRAINT ck_query_embeddings_modelo_clp CHECK ((vector_clip  IS NULL) = (modelo_clip  IS NULL)),
+    CONSTRAINT fk_query_embeddings_consulta FOREIGN KEY (id_consulta) REFERENCES consulta(id_consulta) ON DELETE CASCADE
 );
 
--- Resultado -> chunk exacto recuperado. SET NULL: si se recarga un documento
--- (se regeneran sus chunks) el historial de consultas conserva el id_doc.
-ALTER TABLE resultado
-    ADD CONSTRAINT fk_resultado_chunk
-    FOREIGN KEY (id_embedding_texto)
-    REFERENCES embeddings_texto(id_embedding)
-    ON DELETE SET NULL;
+-- Resultado apunta al CHUNK recuperado (no al documento) o a la imagen, nunca a ambos.
+CREATE TABLE resultado (
+    id_resultado     SERIAL        CONSTRAINT pk_resultado PRIMARY KEY,
+    id_consulta      INT           NOT NULL,
+    id_chunk         INT,                      -- -> embeddings_texto (trae documento y estrategia)
+    id_img           INT,
+    posicion         SMALLINT      NOT NULL CONSTRAINT ck_resultado_posicion CHECK (posicion >= 1),
+    score_similitud  NUMERIC(9,6)  NOT NULL CONSTRAINT ck_resultado_score CHECK (score_similitud BETWEEN -1 AND 1),
+    CONSTRAINT ck_resultado_exclusivo CHECK (num_nonnulls(id_chunk, id_img) = 1),
+    CONSTRAINT uq_resultado_posicion  UNIQUE (id_consulta, posicion),
+    CONSTRAINT uq_resultado_chunk     UNIQUE (id_consulta, id_chunk),
+    CONSTRAINT uq_resultado_img       UNIQUE (id_consulta, id_img),
+    CONSTRAINT fk_resultado_consulta FOREIGN KEY (id_consulta) REFERENCES consulta(id_consulta)          ON DELETE CASCADE,
+    CONSTRAINT fk_resultado_chunk    FOREIGN KEY (id_chunk)    REFERENCES embeddings_texto(id_embedding) ON DELETE RESTRICT,
+    CONSTRAINT fk_resultado_imagen   FOREIGN KEY (id_img)      REFERENCES imagen(id_img)                 ON DELETE RESTRICT
+);
 
-CREATE INDEX idx_producto_categoria
-    ON producto(id_categoria);
+CREATE TABLE evaluacion (
+    id_eval            SERIAL        CONSTRAINT pk_evaluacion PRIMARY KEY,
+    id_consulta        INT           NOT NULL CONSTRAINT uq_evaluacion_consulta UNIQUE,   -- 1:1
+    faithfulness       NUMERIC(4,3)  NOT NULL CONSTRAINT ck_evaluacion_faithfulness     CHECK (faithfulness     BETWEEN 0 AND 1),
+    answer_relevancy   NUMERIC(4,3)  NOT NULL CONSTRAINT ck_evaluacion_answer_relevancy CHECK (answer_relevancy BETWEEN 0 AND 1),
+    context_recall     NUMERIC(4,3)  NOT NULL CONSTRAINT ck_evaluacion_context_recall   CHECK (context_recall   BETWEEN 0 AND 1),
+    modelo_eval        VARCHAR(100)  NOT NULL,
+    fecha              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_evaluacion_consulta FOREIGN KEY (id_consulta) REFERENCES consulta(id_consulta) ON DELETE CASCADE
+);
 
-CREATE INDEX idx_producto_marca
-    ON producto(id_marca);
 
-CREATE INDEX idx_producto_proveedor
-    ON producto(id_proveedor);
+-- E1. compra.total es derivado: suma de cantidad * precio_unitario de sus líneas.
+CREATE FUNCTION fn_actualizar_total_compra() RETURNS trigger AS $$
+BEGIN
+    UPDATE compra c
+       SET total = COALESCE((SELECT SUM(d.cantidad * d.precio_unitario)
+                               FROM detalle_compra d WHERE d.id_compra = c.id_compra), 0)
+     WHERE c.id_compra = COALESCE(NEW.id_compra, OLD.id_compra);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_promocion_producto_producto
-    ON promocion_producto(id_producto);
+CREATE TRIGGER trg_detalle_compra_total
+    AFTER INSERT OR UPDATE OR DELETE ON detalle_compra
+    FOR EACH ROW EXECUTE FUNCTION fn_actualizar_total_compra();
 
-CREATE INDEX idx_inventario_producto
-    ON inventario(id_producto);
+-- E2. Un resultado de texto viene de un chunk de la MISMA estrategia de la consulta, y cada
+--     tipo de consulta solo admite el tipo de recurso que recupera.
+CREATE FUNCTION fn_validar_resultado() RETURNS trigger AS $$
+DECLARE
+    v_estrategia_consulta VARCHAR(20);
+    v_tipo                VARCHAR(20);
+    v_estrategia_chunk    VARCHAR(20);
+BEGIN
+    SELECT estrategia_chunking, tipo_consulta INTO v_estrategia_consulta, v_tipo
+      FROM consulta WHERE id_consulta = NEW.id_consulta;
 
-CREATE INDEX idx_empleado_punto_venta
-    ON empleado(id_punto_venta);
+    IF NEW.id_chunk IS NOT NULL THEN
+        IF v_tipo NOT IN ('texto_texto','imagen_texto','hibrida','rag') THEN
+            RAISE EXCEPTION 'La consulta % es de tipo % y no admite chunks como resultado', NEW.id_consulta, v_tipo;
+        END IF;
+        SELECT estrategia_chunking INTO v_estrategia_chunk
+          FROM embeddings_texto WHERE id_embedding = NEW.id_chunk;
+        IF v_estrategia_chunk IS DISTINCT FROM v_estrategia_consulta THEN
+            RAISE EXCEPTION 'El chunk % es de la estrategia %, pero la consulta % usa %',
+                NEW.id_chunk, v_estrategia_chunk, NEW.id_consulta, v_estrategia_consulta;
+        END IF;
+    ELSIF v_tipo NOT IN ('texto_imagen','imagen_imagen','rag') THEN
+        RAISE EXCEPTION 'La consulta % es de tipo % y no admite imágenes como resultado', NEW.id_consulta, v_tipo;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_compra_cliente
-    ON compra(id_cliente);
+CREATE TRIGGER trg_validar_resultado
+    BEFORE INSERT OR UPDATE ON resultado
+    FOR EACH ROW EXECUTE FUNCTION fn_validar_resultado();
 
-CREATE INDEX idx_compra_punto_venta
-    ON compra(id_punto_venta);
+-- E3. Solo se evalúa con RAGAS una corrida del experimento: tiene pregunta (ground truth) y respuesta.
+CREATE FUNCTION fn_validar_evaluacion() RETURNS trigger AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM consulta
+                    WHERE id_consulta = NEW.id_consulta
+                      AND id_pregunta IS NOT NULL
+                      AND respuesta_llm IS NOT NULL) THEN
+        RAISE EXCEPTION 'La consulta % no tiene pregunta con ground_truth o respuesta del LLM; no se puede evaluar',
+            NEW.id_consulta;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_detalle_compra_producto
-    ON detalle_compra(id_producto);
+CREATE TRIGGER trg_validar_evaluacion
+    BEFORE INSERT OR UPDATE ON evaluacion
+    FOR EACH ROW EXECUTE FUNCTION fn_validar_evaluacion();
 
-CREATE INDEX idx_direccion_cliente
-    ON direccion(id_cliente);
+-- E4. La dirección del domicilio pertenece al cliente que hizo la compra.
+CREATE FUNCTION fn_validar_direccion_domicilio() RETURNS trigger AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM compra c JOIN direccion d ON d.id_cliente = c.id_cliente
+                    WHERE c.id_compra = NEW.id_compra AND d.id_direccion = NEW.id_direccion) THEN
+        RAISE EXCEPTION 'La dirección % no pertenece al cliente de la compra %', NEW.id_direccion, NEW.id_compra;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_vehiculo_punto_venta
-    ON vehiculo(id_punto_venta);
+CREATE TRIGGER trg_validar_direccion_domicilio
+    BEFORE INSERT OR UPDATE OF id_compra, id_direccion ON domicilio
+    FOR EACH ROW EXECUTE FUNCTION fn_validar_direccion_domicilio();
 
-CREATE INDEX idx_domicilio_direccion
-    ON domicilio(id_direccion);
 
-CREATE INDEX idx_domicilio_vehiculo
-    ON domicilio(id_vehiculo);
+CREATE FUNCTION fn_validar_isa_usuario() RETURNS trigger AS $$
+BEGIN
+    IF (NEW.tipo = 'cliente'  AND NOT EXISTS (SELECT 1 FROM cliente  WHERE id_usuario = NEW.id_usuario))
+    OR (NEW.tipo = 'empleado' AND NOT EXISTS (SELECT 1 FROM empleado WHERE id_usuario = NEW.id_usuario)) THEN
+        RAISE EXCEPTION 'El usuario % es de tipo % pero no tiene fila en esa tabla', NEW.id_usuario, NEW.tipo;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_domicilio_conductor
-    ON domicilio(id_conductor);
+CREATE CONSTRAINT TRIGGER trg_isa_usuario
+    AFTER INSERT OR UPDATE ON usuario
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION fn_validar_isa_usuario();
 
-CREATE INDEX idx_documento_producto
-    ON documento(id_producto);
+CREATE FUNCTION fn_validar_isa_empleado() RETURNS trigger AS $$
+BEGIN
+    IF (NEW.tipo_empleado = 'administrativo' AND NOT EXISTS (SELECT 1 FROM administrativo WHERE id_empleado = NEW.id_empleado))
+    OR (NEW.tipo_empleado = 'conductor'      AND NOT EXISTS (SELECT 1 FROM conductor      WHERE id_empleado = NEW.id_empleado)) THEN
+        RAISE EXCEPTION 'El empleado % es % pero no tiene fila en esa tabla', NEW.id_empleado, NEW.tipo_empleado;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_imagen_documento
-    ON imagen(id_doc);
+CREATE CONSTRAINT TRIGGER trg_isa_empleado
+    AFTER INSERT OR UPDATE ON empleado
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION fn_validar_isa_empleado();
 
-CREATE INDEX idx_imagen_producto
-    ON imagen(id_producto);
 
-CREATE INDEX idx_consulta_usuario
-    ON consulta(id_usuario);
 
-CREATE INDEX idx_resultado_consulta
-    ON resultado(id_consulta);
+CREATE INDEX idx_producto_categoria           ON producto (id_categoria);
+CREATE INDEX idx_producto_marca               ON producto (id_marca);
+CREATE INDEX idx_producto_proveedor           ON producto (id_proveedor);
+CREATE INDEX idx_inventario_producto          ON inventario (id_producto);
+CREATE INDEX idx_promocion_producto_producto  ON promocion_producto (id_producto);
+CREATE INDEX idx_empleado_punto_venta         ON empleado (id_punto_venta);
+CREATE INDEX idx_direccion_cliente            ON direccion (id_cliente);
+CREATE INDEX idx_vehiculo_punto_venta         ON vehiculo (id_punto_venta);
+CREATE INDEX idx_compra_cliente               ON compra (id_cliente);
+CREATE INDEX idx_compra_punto_venta           ON compra (id_punto_venta);
+CREATE INDEX idx_detalle_compra_producto      ON detalle_compra (id_producto);
+CREATE INDEX idx_domicilio_direccion          ON domicilio (id_direccion);
+CREATE INDEX idx_domicilio_vehiculo           ON domicilio (id_vehiculo);
+CREATE INDEX idx_domicilio_conductor          ON domicilio (id_conductor);
+CREATE INDEX idx_documento_producto           ON documento (id_producto);
+CREATE INDEX idx_imagen_documento             ON imagen (id_doc);
+CREATE INDEX idx_imagen_etiqueta_etiqueta     ON imagen_etiqueta (id_etiqueta);
+CREATE INDEX idx_pregunta_documento_doc       ON pregunta_documento (id_doc);
+CREATE INDEX idx_consulta_usuario             ON consulta (id_usuario);
+CREATE INDEX idx_consulta_pregunta            ON consulta (id_pregunta);
+CREATE INDEX idx_resultado_chunk              ON resultado (id_chunk);
+CREATE INDEX idx_resultado_imagen             ON resultado (id_img);
 
-CREATE INDEX idx_resultado_documento
-    ON resultado(id_doc);
 
-CREATE INDEX idx_resultado_imagen
-    ON resultado(id_img);
+CREATE INDEX idx_producto_precio              ON producto (precio);
+CREATE INDEX idx_inventario_disponible        ON inventario (id_punto_venta, id_producto) WHERE stock > 0;
+CREATE INDEX idx_documento_tipo_idioma        ON documento (tipo, idioma);
+CREATE INDEX idx_consulta_estrategia          ON consulta (estrategia_chunking);
+-- Texto completo en español sobre los chunks (busqueda.buscar_texto_texto). La expresión
+-- debe ser idéntica a la de la consulta para que el índice se use.
+CREATE INDEX idx_emb_texto_fts ON embeddings_texto USING gin (to_tsvector('spanish', contenido_chunk));
 
-CREATE INDEX idx_embeddings_imagen_imagen
-    ON embeddings_imagen(id_img);
 
-CREATE INDEX idx_imagen_etiqueta_etiqueta
-    ON imagen_etiqueta(etiqueta);
-
-CREATE INDEX idx_documento_idioma_fecha
-    ON documento(idioma, fecha);
-
-CREATE INDEX idx_embeddings_texto_documento
-    ON embeddings_texto(id_doc, estrategia_chunking);
-
-CREATE INDEX idx_resultado_chunk
-    ON resultado(id_embedding_texto);
-
--- Texto completo (español) sobre los chunks: parte léxica de la búsqueda híbrida
--- (busqueda.buscar_texto_texto). La expresión debe ser idéntica a la de la consulta.
-CREATE INDEX idx_emb_texto_fts
-    ON embeddings_texto
-    USING gin (to_tsvector('spanish', contenido_chunk));
-
-CREATE INDEX idx_inventario_punto_venta_stock
-    ON inventario(id_punto_venta, id_producto) WHERE stock > 0;
-
-CREATE INDEX idx_producto_precio
-    ON producto(precio);
-
--- =====================================================================
--- 11. ÍNDICES VECTORIALES (pgvector, HNSW, distancia coseno)
--- =====================================================================
-
-CREATE INDEX idx_emb_texto_hnsw_fijo
-    ON embeddings_texto
-    USING hnsw (vector_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64)
+CREATE INDEX idx_emb_texto_hnsw_fijo ON embeddings_texto
+    USING hnsw (vector_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
     WHERE estrategia_chunking = 'fijo';
-
-CREATE INDEX idx_emb_texto_hnsw_oraciones
-    ON embeddings_texto
-    USING hnsw (vector_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64)
+CREATE INDEX idx_emb_texto_hnsw_oraciones ON embeddings_texto
+    USING hnsw (vector_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
     WHERE estrategia_chunking = 'oraciones';
-
-CREATE INDEX idx_emb_texto_hnsw_semantico
-    ON embeddings_texto
-    USING hnsw (vector_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64)
+CREATE INDEX idx_emb_texto_hnsw_semantico ON embeddings_texto
+    USING hnsw (vector_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
     WHERE estrategia_chunking = 'semantico';
+CREATE INDEX idx_emb_imagen_hnsw ON embeddings_imagen
+    USING hnsw (vector_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+CREATE INDEX idx_emb_imagen_desc_hnsw ON embeddings_imagen
+    USING hnsw (vector_descripcion vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+CREATE INDEX idx_emb_texto_clip_hnsw ON embeddings_texto_clip
+    USING hnsw (vector_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
-CREATE INDEX idx_emb_imagen_hnsw
-    ON embeddings_imagen
-    USING hnsw (vector_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
 
-CREATE INDEX idx_emb_texto_clip_hnsw
-    ON embeddings_texto_clip
-    USING hnsw (vector_embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
+CREATE VIEW v_resultados_experimento AS
+WITH primer_acierto AS (
+    SELECT r.id_consulta, MIN(r.posicion) AS posicion
+      FROM resultado r
+      JOIN consulta c            ON c.id_consulta = r.id_consulta
+      JOIN embeddings_texto e    ON e.id_embedding = r.id_chunk
+      JOIN pregunta_documento pd ON pd.id_pregunta = c.id_pregunta AND pd.id_doc = e.id_doc
+     GROUP BY r.id_consulta
+)
+SELECT c.id_consulta,
+       p.id_pregunta,
+       p.codigo_pregunta,
+       p.tipo                                         AS tipo_pregunta,
+       c.estrategia_chunking,
+       c.top_k,
+       pa.posicion                                    AS posicion_primer_acierto,
+       COALESCE((pa.posicion = 1)::int, 0)            AS hit_1,
+       (pa.posicion IS NOT NULL)::int                 AS hit_k,
+       COALESCE(round(1.0 / pa.posicion, 4), 0)       AS reciprocal_rank,
+       c.tiempo_recuperacion_ms,
+       c.tiempo_total_ms,
+       ev.faithfulness,
+       ev.answer_relevancy,
+       ev.context_recall
+  FROM consulta c
+  JOIN pregunta p              ON p.id_pregunta = c.id_pregunta
+  LEFT JOIN primer_acierto pa  ON pa.id_consulta = c.id_consulta
+  LEFT JOIN evaluacion ev      ON ev.id_consulta = c.id_consulta;

@@ -8,8 +8,8 @@
 SELECT p.nombre, m.nombre AS marca, c.nombre AS categoria, pr.nombre AS proveedor, p.precio
 FROM producto p
 JOIN categoria c  ON c.id_categoria = p.id_categoria
-LEFT JOIN marca m ON m.id_marca = p.id_marca
-LEFT JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor
+JOIN marca m      ON m.id_marca = p.id_marca
+JOIN proveedor pr ON pr.id_proveedor = p.id_proveedor
 WHERE c.nombre = 'Café y chocolate'
   AND p.precio BETWEEN 8000 AND 20000
   AND pr.nombre ILIKE '%café de altura%'
@@ -91,18 +91,42 @@ WHERE i.stock <= i.stock_minimo
 ORDER BY pv.nombre, i.stock
 LIMIT 30;
 
--- RF-08. Métricas de calidad por tipo de consulta y estrategia de chunking
+-- RF-08a. Trazabilidad por tipo de consulta y estrategia de chunking
 SELECT c.tipo_consulta, c.estrategia_chunking,
        count(DISTINCT c.id_consulta)                AS consultas,
        round(avg(c.tiempo_recuperacion_ms), 1)      AS recuperacion_ms_prom,
        round(percentile_cont(0.95) WITHIN GROUP (ORDER BY c.tiempo_recuperacion_ms)::numeric, 1) AS recuperacion_ms_p95,
        round(avg(c.tiempo_total_ms), 1)             AS total_ms_prom,
-       round(avg(r.score_similitud) FILTER (WHERE r.ranking = 1), 4) AS score_top1_prom,
-       round(avg(ev.faithfulness), 3)               AS faithfulness,
-       round(avg(ev.answer_relevancy), 3)           AS answer_relevancy,
-       round(avg(ev.context_recall), 3)             AS context_recall
+       round(avg(r.score_similitud) FILTER (WHERE r.posicion = 1), 4) AS score_top1_prom
 FROM consulta c
-LEFT JOIN resultado r   ON r.id_consulta = c.id_consulta
-LEFT JOIN evaluacion ev ON ev.id_consulta = c.id_consulta
+LEFT JOIN resultado r ON r.id_consulta = c.id_consulta
 GROUP BY c.tipo_consulta, c.estrategia_chunking
 ORDER BY c.tipo_consulta, c.estrategia_chunking;
+
+-- RF-08b. Experimento de chunking: métricas de recuperación y RAGAS por estrategia
+--         (una fila por corrida en la vista v_resultados_experimento, ver schema.sql)
+SELECT estrategia_chunking,
+       count(*)                                  AS corridas,
+       round(avg(hit_1), 3)                      AS hit_1,
+       round(avg(hit_k), 3)                      AS hit_k,
+       round(avg(reciprocal_rank), 3)            AS mrr,
+       count(faithfulness)                       AS evaluadas,
+       round(avg(faithfulness), 3)               AS faithfulness,
+       round(avg(answer_relevancy), 3)           AS answer_relevancy,
+       round(avg(context_recall), 3)             AS context_recall,
+       round(avg(tiempo_recuperacion_ms), 1)     AS recuperacion_ms
+FROM v_resultados_experimento
+GROUP BY estrategia_chunking
+ORDER BY context_recall DESC NULLS LAST, mrr DESC;
+
+-- RF-08c. Qué chunk y de qué documento recuperó cada corrida de una pregunta
+SELECT p.codigo_pregunta, c.estrategia_chunking, r.posicion, d.codigo_doc, e.chunk_id,
+       r.score_similitud, (pd.id_doc IS NOT NULL) AS documento_esperado
+FROM consulta c
+JOIN pregunta p          ON p.id_pregunta = c.id_pregunta
+JOIN resultado r         ON r.id_consulta = c.id_consulta
+JOIN embeddings_texto e  ON e.id_embedding = r.id_chunk
+JOIN documento d         ON d.id_doc = e.id_doc
+LEFT JOIN pregunta_documento pd ON pd.id_pregunta = p.id_pregunta AND pd.id_doc = d.id_doc
+WHERE p.codigo_pregunta = 'P01'
+ORDER BY c.estrategia_chunking, r.posicion;

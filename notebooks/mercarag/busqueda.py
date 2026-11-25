@@ -1,18 +1,18 @@
 """Rutas de búsqueda del laboratorio aplicadas a MercaRAG.
 
 Todas siguen el mismo patrón:
-  1. vectorizar la consulta con el modelo correcto (mismo espacio que lo guardado)
+  1. vectorizar la consulta con el modelo correcto (mismo espacio que lo guardado; e5 con "query: ")
   2. un SQL que une la tabla de embeddings con las tablas relacionales
   3. ORDER BY vector <=> consulta LIMIT k   (distancia coseno; score = 1 - distancia)
 
 | Función                   | Vectoriza con     | Busca en                | Requerimiento |
 |---------------------------|-------------------|-------------------------|---------------|
-| buscar_texto_texto        | MiniLM (384) + FTS| embeddings_texto        | RF-06         |
+| buscar_texto_texto        | e5 (384) + FTS    | embeddings_texto        | RF-04 / RF-06 |
 | buscar_texto_imagen       | CLIP texto (512)  | embeddings_imagen       | RF-09         |
 | buscar_imagen_imagen      | CLIP imagen (512) | embeddings_imagen       |               |
 | buscar_imagen_texto       | CLIP imagen (512) | embeddings_texto_clip   |               |
-| productos_similares       | MiniLM (384)      | fichas de producto      | RF-04         |
-| buscar_productos_hibrida  | MiniLM (384)      | fichas + inventario     | RF-05         |
+| productos_similares       | e5 (384)          | fichas de producto      | RF-04         |
+| buscar_productos_hibrida  | e5 (384)          | fichas + inventario     | RF-05         |
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import config
 from .db import consultar
 from .embeddings import abrir_imagen
 
@@ -32,15 +33,15 @@ def _df(filas) -> pd.DataFrame:
 
 
 # ------------------------------------------------------------------ texto -> texto
-# Búsqueda híbrida: vector (MiniLM) + texto completo de PostgreSQL, fusionados con RRF.
+# Búsqueda híbrida: vector (e5) + texto completo de PostgreSQL, fusionados con RRF.
 #
-# Por qué: las 85 fichas comparten frases de plantilla ("Si el producto está agotado en
+# Por qué: las 81 fichas comparten frases de plantilla ("Si el producto está agotado en
 # una sede, el servicio de domicilios..."). Con búsqueda solo vectorial, una misma frase
 # repetida en 85 documentos ocupaba todo el top-k y el chunk que respondía quedaba en el
 # puesto ~100 (p. ej. "¿Qué hago si me llega un producto vencido en el domicilio?").
 #   1. Cada lista se deduplica por contenido_chunk (una frase repetida cuenta una vez).
 #   2. La lista léxica (to_tsvector 'spanish', términos unidos con OR) premia palabras
-#      exactas como "vencido" que MiniLM no distingue bien de "agotado".
+#      exactas como "vencido" que el modelo denso no distingue bien de "agotado".
 #   3. Reciprocal Rank Fusion: score_rrf = sum(1 / (60 + puesto)) en cada lista.
 # El índice GIN idx_emb_texto_fts (schema.sql) acelera el filtro @@.
 _SQL_HIBRIDA = """
@@ -96,7 +97,7 @@ _SQL_HIBRIDA = """
 """
 
 
-def buscar_texto_texto(conn, modelos, pregunta: str, estrategia: str = "semantico", k: int = 5,
+def buscar_texto_texto(conn, modelos, pregunta: str, estrategia: str = "semantico", k: int = config.TOP_K,
                        tipo: str | None = None, id_producto: int | None = None,
                        hibrida: bool = True) -> pd.DataFrame:
     """Chunks más parecidos a la pregunta, con filtros relacionales opcionales.
@@ -105,7 +106,7 @@ def buscar_texto_texto(conn, modelos, pregunta: str, estrategia: str = "semantic
     hibrida=False: solo similitud coseno (comportamiento original del laboratorio).
     En ambos casos `score` es la similitud coseno (1 - distancia) del chunk.
     """
-    qvec = modelos.embed_texto([pregunta])[0]
+    qvec = modelos.embed_consulta([pregunta])[0]
     if hibrida:
         params = {"q": qvec, "texto": pregunta, "estrategia": estrategia, "tipo": tipo,
                   "id_producto": id_producto, "candidatos": 200, "n_lista": 40, "k": k}
@@ -133,11 +134,12 @@ def buscar_texto_imagen(conn, modelos, texto: str, k: int = 5, categoria: str | 
     """RF-09: fotos del catálogo que corresponden a una descripción escrita."""
     qvec = modelos.embed_texto_clip([texto])[0]
     sql = """
-        SELECT i.id_img, i.codigo_img, i.ruta_archivo, i.descripcion, p.nombre AS producto,
+        SELECT i.id_img, i.codigo_img, i.ruta_archivo, i.descripcion, d.codigo_doc, p.nombre AS producto,
                c.nombre AS categoria, 1 - (e.vector_embedding <=> %s) AS score
         FROM embeddings_imagen e
-        JOIN imagen i ON i.id_img = e.id_img
-        LEFT JOIN producto p  ON p.id_producto = i.id_producto
+        JOIN imagen i    ON i.id_img = e.id_img
+        JOIN documento d ON d.id_doc = i.id_doc                 -- único dueño de la foto
+        LEFT JOIN producto p  ON p.id_producto = d.id_producto  -- el producto sale de la ficha
         LEFT JOIN categoria c ON c.id_categoria = p.id_categoria
         WHERE (%s::text IS NULL OR c.nombre = %s)
         ORDER BY e.vector_embedding <=> %s
@@ -150,11 +152,12 @@ def buscar_texto_imagen(conn, modelos, texto: str, k: int = 5, categoria: str | 
 def buscar_imagen_imagen(conn, modelos, ruta: str | Path, k: int = 5) -> pd.DataFrame:
     qvec = modelos.embed_imagenes([abrir_imagen(ruta)])[0]
     sql = """
-        SELECT i.id_img, i.codigo_img, i.ruta_archivo, p.nombre AS producto,
+        SELECT i.id_img, i.codigo_img, i.ruta_archivo, d.codigo_doc, p.nombre AS producto,
                1 - (e.vector_embedding <=> %s) AS score
         FROM embeddings_imagen e
-        JOIN imagen i ON i.id_img = e.id_img
-        LEFT JOIN producto p ON p.id_producto = i.id_producto
+        JOIN imagen i    ON i.id_img = e.id_img
+        JOIN documento d ON d.id_doc = i.id_doc
+        LEFT JOIN producto p ON p.id_producto = d.id_producto
         ORDER BY e.vector_embedding <=> %s
         LIMIT %s
     """
@@ -166,7 +169,8 @@ def buscar_imagen_texto(conn, modelos, ruta: str | Path, k: int = 5, estrategia:
     """Una foto encuentra los chunks que hablan de ella (ambos en el espacio CLIP)."""
     qvec = modelos.embed_imagenes([abrir_imagen(ruta)])[0]
     sql = """
-        SELECT t.id_embedding, d.codigo_doc, d.titulo, t.contenido_chunk,
+        SELECT t.id_embedding, d.id_doc, d.codigo_doc, d.titulo, d.tipo, t.chunk_id,
+               t.estrategia_chunking AS estrategia, t.contenido_chunk,
                1 - (c.vector_embedding <=> %s) AS score
         FROM embeddings_texto_clip c
         JOIN embeddings_texto t ON t.id_embedding = c.id_embedding
@@ -206,7 +210,7 @@ def productos_similares(conn, modelos, descripcion: str, k: int = 10, estrategia
         ORDER BY f.distancia, p.precio
         LIMIT %(k)s
     """
-    q = modelos.embed_texto([descripcion])[0]
+    q = modelos.embed_consulta([descripcion])[0]
     return _df(consultar(conn, sql, {"q": q, "estrategia": estrategia, "n_fichas": 5, "k": k}))
 
 
@@ -239,6 +243,6 @@ def buscar_productos_hibrida(conn, modelos, descripcion: str, sede: str | None =
         ORDER BY f.distancia, p.precio
         LIMIT %(k)s
     """
-    q = modelos.embed_texto([descripcion])[0]
+    q = modelos.embed_consulta([descripcion])[0]
     return _df(consultar(conn, sql, {"q": q, "estrategia": estrategia, "n_fichas": 5, "sede": sede,
                                      "precio_max": precio_max, "solo_promo": solo_promocion, "k": k}))

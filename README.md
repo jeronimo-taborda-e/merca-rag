@@ -13,10 +13,10 @@ Proyecto académico de **Bases de Datos Relacionales** — Universidad de Caldas
 ```
 MercaRAG/
 ├── docker-compose.yml          # db (PostgreSQL 17 + pgvector) y jupyter
-├── schema.sql                  # 28 tablas relacionales y vectoriales + índices HNSW
+├── schema.sql                  # 31 tablas relacionales y vectoriales, triggers, índices HNSW y vista del experimento
 ├── sql/
 │   ├── 02_datos_dominio.sql    # datos de prueba (se cargan solos al crear la base)
-│   └── 03_consultas_clasicas.sql  # RF-01, RF-02, RF-03, RF-07, RF-08
+│   └── 03_consultas_clasicas.sql  # RF-01, RF-02, RF-03, RF-07, RF-08 (incluye el experimento)
 ├── scripts/
 │   ├── catalogo_base.py        # catálogo base del supermercado
 │   └── generar_datos.py        # regenera sql/02_datos_dominio.sql y las fichas
@@ -24,12 +24,13 @@ MercaRAG/
 │   ├── documentos/             # 93 documentos: fichas/, politicas/, manuales/, guias/
 │   ├── imagenes/<producto>/    # fotos del catálogo (ver data/imagenes/LEEME.md)
 │   ├── consultas/              # fotos para consultar (no se cargan a la base)
-│   └── resultados/             # CSV del experimento de chunking
+│   ├── evaluacion/preguntas.csv  # 30 preguntas con ground truth y documentos esperados
+│   └── resultados/             # CSV del experimento de chunking (los genera el notebook 02)
 ├── jupyter/                    # Dockerfile y requirements de Jupyter
 └── notebooks/
     ├── 00_arranque_docker.ipynb          # verifica conexión, tablas e índices
     ├── 01_rag_multimodal_mercarag.ipynb  # laboratorio multimodal aplicado a MercaRAG
-    ├── 02_experimento_chunking.ipynb     # comparación fijo / oraciones / semántico
+    ├── 02_experimento_chunking.ipynb     # protocolo 30 preguntas × 3 estrategias + RAGAS
     └── mercarag/                         # paquete Python con toda la lógica
 ```
 
@@ -42,7 +43,7 @@ Requisitos: Docker Desktop (con WSL 2 en Windows), 8 GB de RAM, unos 6 GB de dis
    ```
    docker compose up -d --build
    ```
-   La primera vez construye Jupyter (PyTorch CPU, spaCy, tiktoken) y crea la base con `schema.sql` + `sql/02_datos_dominio.sql`. Puede tardar 10–15 minutos.
+   La primera vez construye Jupyter (PyTorch CPU, spaCy) y crea la base con `schema.sql` + `sql/02_datos_dominio.sql`. Puede tardar 10–15 minutos.
 3. (Opcional) Ponga fotos de productos en `data/imagenes/<producto>/` y alguna foto externa en `data/consultas/` (ver `data/imagenes/LEEME.md`).
 4. Abra JupyterLab en http://localhost:8889 (token: `JUPYTER_TOKEN` de `.env`) y ejecute en orden:
    `00_arranque_docker` → `01_rag_multimodal_mercarag` → `02_experimento_chunking`.
@@ -72,41 +73,63 @@ docker compose up -d
 | producto | 1.215 | | compra | 30.000 |
 | inventario | ~5.100 | | detalle_compra | ~105.000 |
 | promocion | 8 | | domicilio | ~20.000 |
-| empleado | 50 (30 administrativos, 20 conductores) | | documento | 93 |
+| empleado | 50 (30 administrativos, 20 conductores) | | documento | 93 (81 fichas, 4 políticas, 4 manuales, 4 guías) |
 
 Los datos se generan con semillas fijas (`random.seed`, `setseed`): todos los integrantes obtienen la misma base. El total de cada compra lo mantiene el trigger `trg_detalle_compra_total` (dato derivado, como se definió en la Entrega 1).
+Todo el archivo de datos va en una sola transacción: los triggers diferidos de las jerarquías ISA verifican al final que cada usuario y cada empleado tenga la fila de su subtipo.
 
 ## Rutas de búsqueda (laboratorio multimodal)
 
 | Ruta | Vectoriza con | Busca en | Requerimiento |
 |---|---|---|---|
-| Texto → Texto | MiniLM multilingüe (384) | `embeddings_texto` (por estrategia) | RF-06 |
+| Texto → Texto | multilingual-e5-small (384) + texto completo | `embeddings_texto` (por estrategia) | RF-04, RF-06 |
 | Texto → Imagen | CLIP texto multilingüe (512) | `embeddings_imagen` | RF-09 |
 | Imagen → Imagen | CLIP imagen (512) | `embeddings_imagen` | |
 | Imagen → Texto | CLIP imagen (512) | `embeddings_texto_clip` | |
-| Productos similares | MiniLM (384) | fichas de producto | RF-04 |
-| Híbrida | MiniLM + filtros SQL | fichas + inventario + sede + precio | RF-05 |
+| Productos similares | e5-small (384) | fichas de producto | RF-04 |
+| Híbrida | e5-small + filtros SQL | fichas + inventario + sede + precio | RF-05 |
 
-El RAG (RF-06) recupera chunks y fotos, arma el contexto, lo envía a Groq y registra la consulta, su vector, cada resultado con su ranking y los tiempos (RF-08).
+El RAG (RF-06) recupera chunks y fotos, arma el contexto, lo envía a Groq y registra la consulta, sus vectores, cada resultado (el **chunk** o la foto) con su posición y los tiempos (RF-08).
 
-## Estrategias de chunking (Entrega 1)
+## Estrategias de chunking (Entrega 1, corregida)
 
-| Estrategia | Herramienta | Parámetros |
+Solo se fragmentan los documentos (fichas, políticas, manuales y guías); productos, clientes y compras son filas SQL.
+Todos los tamaños se miden con el tokenizador de `intfloat/multilingual-e5-small`, que lee hasta 512 tokens.
+
+| Estrategia | Herramienta | Parámetros (congelados en `config.py`) |
 |---|---|---|
-| `fijo` | LangChain `TokenTextSplitter` (cl100k_base) | 512 tokens, overlap 64 |
-| `oraciones` | spaCy `es_core_news_sm` | 6 oraciones, overlap 1 |
-| `semantico` | Sentence Transformers (MiniLM) | umbral coseno 0,60–0,70 (se elige en el notebook 02) |
+| `fijo` | tokenizador del modelo (offsets) | 256 tokens, overlap 32 |
+| `oraciones` | spaCy `es_core_news_sm` + agrupación propia | máx. 5 oraciones, overlap 1, tope 464 tokens |
+| `semantico` | spaCy + e5-small (oración vs. centroide del chunk) | umbral coseno **0,80 fijo**, tope 464 tokens |
 
-Las tres conviven en `embeddings_texto` (columna `estrategia_chunking`, con un índice HNSW parcial por estrategia), y cada chunk guarda sus `parametros` (JSONB) y su `n_tokens` para medir cuánto contexto se pierde por truncamiento.
+Las tres conviven en `embeddings_texto` (columna `estrategia_chunking`, con un índice HNSW parcial por estrategia).
+Cada chunk guarda sus `parametros` (JSONB) y sus `n_tokens` (lo que lee el modelo: `passage: título. chunk`); un `CHECK`
+impide guardar uno de más de 512 tokens, así que ninguno se trunca al vectorizar.
 
-## Cambios respecto a la Entrega 1
+## Experimento de chunking (notebook 02)
 
-- **Modelo de texto multilingüe**: `paraphrase-multilingual-MiniLM-L12-v2` en lugar de `all-MiniLM-L6-v2`. Misma dimensión (384), pero entrenado para español, que es el idioma de los documentos y de las preguntas (error común señalado en el laboratorio).
-- **CLIP de texto multilingüe** (`clip-ViT-B-32-multilingual-v1`) para que una pregunta en español encuentre fotos.
-- Tabla nueva `embeddings_texto_clip` (chunks en el espacio CLIP) para la ruta imagen → texto.
-- `query_embeddings.vector_clip` (512): la Entrega 1 guardaba la pregunta CLIP en una columna de 384.
-- Columnas de trazabilidad y carga idempotente: `documento.codigo_doc/tipo`, `imagen.codigo_img/sha256/ancho/alto`, `consulta.tipo_consulta/respuesta_llm/tiempos`, `resultado.ranking/id_embedding_texto`.
-- El catálogo tiene 1.215 productos (81 productos base × 5 marcas × 3 presentaciones) y 93 documentos.
+1. `data/evaluacion/preguntas.csv`: 30 preguntas con su *ground truth* y los documentos que las responden, redactadas antes
+   de generar chunks (8 de políticas, 7 de manuales, 7 de fichas, 5 de guías y 3 multidocumento). Se cargan en `pregunta`
+   y `pregunta_documento`.
+2. Cada pregunta se ejecuta con cada estrategia (90 corridas, `top_k = 5`, mismo LLM con temperatura 0). Cada corrida queda en
+   `consulta` (con `id_pregunta` y `estrategia_chunking`) y sus chunks en `resultado`.
+3. Métricas: recuperación (hit@1, hit@5, MRR) desde la vista `v_resultados_experimento`, y RAGAS (faithfulness,
+   answer_relevancy, context_recall) con un LLM juez, guardadas en `evaluacion`.
+4. Comparación pareada por pregunta con la prueba de Wilcoxon (α = 0,05). Ningún parámetro se ajusta mirando las métricas.
+
+## Correcciones de la revisión de la Entrega 1
+
+- **Modelo de texto multilingüe** `intfloat/multilingual-e5-small` (384, igual que el esquema) con prefijos `query:`/`passage:`;
+  lee 512 tokens, así que los chunks de 256 entran completos. CLIP de texto multilingüe para las preguntas en español contra fotos.
+- **Chunking**: fixed-size de 256/32 medido con el tokenizador del modelo, 5 oraciones, umbral semántico fijo de 0,80 y protocolo.
+- **Jerarquías ISA disjuntas y totales** (`usuario.tipo`, `empleado.tipo_empleado`, FK compuestas y triggers diferidos).
+- **Imagen con un único dueño** (la ficha); el producto se obtiene por `documento.id_producto`.
+- **Etiquetas N:M**: catálogo `etiqueta` + `imagen_etiqueta`.
+- **Capa de experimento**: `pregunta` y `pregunta_documento`; `consulta.id_pregunta`/`estrategia_chunking`;
+  `resultado.id_chunk` con `CHECK` exclusivo chunk/imagen; `query_embeddings.vector_texto` (384) y `vector_clip` (512);
+  `embeddings_imagen` 1:1 (`UNIQUE id_img`).
+- Triggers: total de la compra, estrategia del chunk = estrategia de la consulta, evaluación solo con ground truth,
+  dirección del domicilio del mismo cliente.
 
 ## Notas
 

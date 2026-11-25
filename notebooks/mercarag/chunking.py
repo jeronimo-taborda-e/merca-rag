@@ -1,10 +1,16 @@
-"""Las tres estrategias de chunking de la Entrega 1.
+"""Las tres estrategias de chunking de la Entrega 1 (versión corregida).
 
-| Estrategia | Herramienta                         | Parámetros del grupo                |
-|------------|-------------------------------------|-------------------------------------|
-| fijo       | LangChain TokenTextSplitter         | chunk_size = 512, overlap = 64      |
-| oraciones  | spaCy (es_core_news_sm)             | max_sentences = 6, overlap = 1      |
-| semantico  | Sentence Transformers (MiniLM)      | umbral coseno 0.60 - 0.70           |
+| Estrategia | Herramienta                                   | Parámetros (fijados antes del experimento) |
+|------------|-----------------------------------------------|--------------------------------------------|
+| fijo       | tokenizador de multilingual-e5-small          | 256 tokens, overlap 32                     |
+| oraciones  | spaCy es_core_news_sm + agrupación propia     | máx. 5 oraciones, overlap 1, tope 464 tok. |
+| semantico  | spaCy + multilingual-e5-small (propio)        | umbral coseno 0.80 fijo, tope 464 tokens   |
+
+Solo se fragmentan los documentos (fichas, políticas, manuales y guías). Productos, clientes y
+compras son filas SQL: se consultan con SQL y entran al RAG como filtros.
+
+Todos los tamaños se cuentan con el tokenizador del MISMO modelo que vectoriza, de modo que
+"256 tokens" significa lo mismo que la ventana del modelo y ningún chunk se trunca.
 
 Todas reciben el texto limpio de un documento y devuelven una lista de cadenas.
 `generar_chunks` las envuelve y agrega los parámetros usados, que se guardan en
@@ -41,37 +47,86 @@ def dividir_oraciones(texto: str, spacy_model: str = "es_core_news_sm") -> list[
     return oraciones
 
 
-# ------------------------------------------------------------------ 1. tamaño fijo
-def chunk_fijo(texto: str, chunk_size: int = 512, chunk_overlap: int = 64,
-               encoding_name: str = "cl100k_base") -> list[str]:
-    """Ventanas de `chunk_size` tokens (tiktoken) que se solapan `chunk_overlap` tokens.
+def ventanas_de_tokens(texto: str, tokenizador, chunk_size: int, chunk_overlap: int) -> list[str]:
+    """Corta `texto` en ventanas de `chunk_size` tokens que se solapan `chunk_overlap` tokens.
 
-    No respeta oraciones ni palabras: el corte cae donde se cumplan los tokens.
+    Usa los offsets del tokenizador para recortar el texto original, así el chunk guardado es
+    legible (no se reconstruye a partir de los tokens).
     """
-    from langchain_text_splitters import TokenTextSplitter
-    splitter = TokenTextSplitter(encoding_name=encoding_name, chunk_size=chunk_size,
-                                 chunk_overlap=chunk_overlap)
-    return [c.strip() for c in splitter.split_text(texto) if c.strip()]
-
-
-# ------------------------------------------------------------------ 2. por oraciones
-def ventanas_de_oraciones(oraciones: list[str], max_sentences: int = 6, overlap: int = 1) -> list[str]:
-    """Agrupa oraciones completas en ventanas de `max_sentences` que comparten `overlap`."""
-    if max_sentences <= overlap:
-        raise ValueError("max_sentences debe ser mayor que overlap")
-    paso = max_sentences - overlap
+    if chunk_size <= chunk_overlap:
+        raise ValueError("chunk_size debe ser mayor que chunk_overlap")
+    codificado = tokenizador(texto, add_special_tokens=False, return_offsets_mapping=True,
+                             truncation=False, verbose=False)
+    offsets = codificado["offset_mapping"]
+    n = len(offsets)
+    if n == 0:
+        return []
+    paso = chunk_size - chunk_overlap
     chunks = []
-    for inicio in range(0, len(oraciones), paso):
-        ventana = oraciones[inicio:inicio + max_sentences]
-        chunks.append(" ".join(ventana))
-        if inicio + max_sentences >= len(oraciones):
+    for inicio in range(0, n, paso):
+        fin = min(inicio + chunk_size, n)
+        trozo = texto[offsets[inicio][0]:offsets[fin - 1][1]].strip()
+        if trozo:
+            chunks.append(trozo)
+        if fin >= n:
             break
     return chunks
 
 
-def chunk_oraciones(texto: str, max_sentences: int = 6, overlap: int = 1,
-                    spacy_model: str = "es_core_news_sm") -> list[str]:
-    return ventanas_de_oraciones(dividir_oraciones(texto, spacy_model), max_sentences, overlap)
+def _acotar_oraciones(oraciones: list[str], modelos, max_tokens: int | None) -> list[str]:
+    """Parte en ventanas de tokens cualquier oración que sola supere `max_tokens` (caso raro)."""
+    if not max_tokens or modelos is None:
+        return oraciones
+    salida = []
+    for o in oraciones:
+        if modelos.contar_tokens(o) > max_tokens:
+            salida.extend(ventanas_de_tokens(o, modelos.tokenizador, max_tokens - 2, 0))
+        else:
+            salida.append(o)
+    return salida
+
+
+# ------------------------------------------------------------------ 1. tamaño fijo
+def chunk_fijo(texto: str, modelos, chunk_size: int = 256, chunk_overlap: int = 32) -> list[str]:
+    """Ventanas de `chunk_size` tokens del tokenizador de e5 que se solapan `chunk_overlap`.
+
+    No respeta oraciones ni palabras completas de forma deliberada: es la línea base.
+    """
+    return ventanas_de_tokens(texto, modelos.tokenizador, chunk_size, chunk_overlap)
+
+
+# ------------------------------------------------------------------ 2. por oraciones
+def ventanas_de_oraciones(oraciones: list[str], max_sentences: int = 5, overlap: int = 1,
+                          n_tokens: list[int] | None = None, max_tokens: int | None = None) -> list[str]:
+    """Agrupa oraciones completas en ventanas de hasta `max_sentences` que comparten `overlap`.
+
+    Si se dan `n_tokens` y `max_tokens`, una ventana se cierra antes de pasar de `max_tokens`
+    (así 5 oraciones muy largas no superan la ventana del modelo).
+    """
+    if max_sentences <= overlap:
+        raise ValueError("max_sentences debe ser mayor que overlap")
+    n = len(oraciones)
+    chunks, inicio = [], 0
+    while inicio < n:
+        fin, tokens = inicio, 0
+        while fin < n and fin - inicio < max_sentences:
+            t = n_tokens[fin] if n_tokens else 0
+            if max_tokens and n_tokens and fin > inicio and tokens + t > max_tokens:
+                break
+            tokens += t
+            fin += 1
+        chunks.append(" ".join(oraciones[inicio:fin]))
+        if fin >= n:
+            break
+        inicio = max(fin - overlap, inicio + 1)
+    return chunks
+
+
+def chunk_oraciones(texto: str, modelos=None, max_sentences: int = 5, overlap: int = 1,
+                    spacy_model: str = "es_core_news_sm", max_tokens: int | None = None) -> list[str]:
+    oraciones = _acotar_oraciones(dividir_oraciones(texto, spacy_model), modelos, max_tokens)
+    n_tokens = [modelos.contar_tokens(o) for o in oraciones] if (modelos is not None and max_tokens) else None
+    return ventanas_de_oraciones(oraciones, max_sentences, overlap, n_tokens, max_tokens)
 
 
 # ------------------------------------------------------------------ 3. semántico
@@ -84,12 +139,12 @@ def cortes_semanticos(vectores: np.ndarray, threshold: float, n_tokens: list[int
       * si la similitud es >= threshold, la oración se agrega al chunk;
       * si es < threshold, cambió el tema y la oración abre un chunk nuevo.
     Protecciones:
-      * si al agregar la oración el chunk superaría `max_tokens` (lo que MiniLM
-        alcanza a leer), también se corta, para no perder contexto por truncamiento;
+      * si al agregar la oración el chunk superaría `max_tokens`, también se corta, para que
+        ningún chunk pase de la ventana del modelo;
       * mientras el chunk tenga menos de `min_tokens` (por ejemplo, un título como
         "Cobertura.") no se corta: el título queda pegado a su primera oración.
 
-    similitudes[i] = similitud de la oración i con el chunk anterior (i >= 1).
+    similitudes[i] = similitud de la oración i+1 con el chunk anterior.
     """
     n = len(vectores)
     if n == 0:
@@ -113,46 +168,58 @@ def cortes_semanticos(vectores: np.ndarray, threshold: float, n_tokens: list[int
     return cortes, np.array(similitudes)
 
 
-def chunk_semantico(texto: str, modelos, threshold: float = 0.65, max_tokens: int | None = None,
+def chunk_semantico(texto: str, modelos, threshold: float = 0.80, max_tokens: int | None = None,
                     min_tokens: int = 0, spacy_model: str = "es_core_news_sm", oraciones: list[str] | None = None,
                     vectores: np.ndarray | None = None) -> list[str]:
     """Agrupa oraciones consecutivas mientras sigan hablando de lo mismo.
 
-    `modelos.embed_texto` vectoriza las oraciones con MiniLM (Sentence Transformers).
-    Se pueden pasar `oraciones` y `vectores` ya calculados para probar varios umbrales
-    sin volver a vectorizar.
+    `modelos.embed_oraciones` vectoriza las oraciones con e5. Se pueden pasar `oraciones` y
+    `vectores` ya calculados para no volver a vectorizar.
     """
     if oraciones is None:
-        oraciones = dividir_oraciones(texto, spacy_model)
+        oraciones = _acotar_oraciones(dividir_oraciones(texto, spacy_model), modelos, max_tokens)
     if not oraciones:
         return []
     if vectores is None:
-        vectores = modelos.embed_texto(oraciones)
+        vectores = modelos.embed_oraciones(oraciones)
     n_tokens = [modelos.contar_tokens(o) for o in oraciones] if (max_tokens or min_tokens) else None
     cortes, _ = cortes_semanticos(np.asarray(vectores), threshold, n_tokens, max_tokens, min_tokens)
     limites = cortes + [len(oraciones)]
     return [" ".join(oraciones[a:b]) for a, b in zip(limites[:-1], limites[1:])]
 
 
+def preparar_oraciones(texto: str, modelos, spacy_model: str = "es_core_news_sm") -> tuple[list[str], np.ndarray]:
+    """Oraciones (acotadas al tope de tokens) y sus vectores, para reutilizarlos."""
+    tope = config.PARAMETROS_CHUNKING["semantico"].get("max_tokens")
+    oraciones = _acotar_oraciones(dividir_oraciones(texto, spacy_model), modelos, tope)
+    vectores = modelos.embed_oraciones(oraciones) if oraciones else np.zeros((0, config.DIM_TEXTO), dtype=np.float32)
+    return oraciones, vectores
+
+
 # ------------------------------------------------------------------ envoltorio
-def generar_chunks(texto: str, estrategia: str, modelos=None, **params) -> tuple[list[str], dict]:
-    """Aplica una estrategia y devuelve (chunks, parámetros usados)."""
+def generar_chunks(texto: str, estrategia: str, modelos, **params) -> tuple[list[str], dict]:
+    """Aplica una estrategia con los parámetros de config y devuelve (chunks, parámetros usados).
+
+    `params` solo admite `oraciones` y `vectores` precalculados (semántico): los parámetros
+    del experimento no se cambian desde fuera.
+    """
+    if modelos is None:
+        raise ValueError("Las tres estrategias necesitan el modelo (tokenizador o embeddings)")
     base = dict(config.PARAMETROS_CHUNKING[estrategia])
-    base.pop("thresholds_experimento", None)
-    base.update(params)
+    precalculado = {k: params.pop(k) for k in ("oraciones", "vectores") if k in params}
+    if params:
+        raise ValueError(f"Parámetros no permitidos: {sorted(params)}. Los parámetros se fijan en config.py")
+    comunes = {"tokenizador": config.MODELO_TEXTO}
     if estrategia == "fijo":
-        chunks = chunk_fijo(texto, **base)
-        usados = {**base, "herramienta": "langchain.TokenTextSplitter"}
+        chunks = chunk_fijo(texto, modelos, **base)
+        usados = {**base, **comunes, "herramienta": "tokenizador del modelo (offsets)"}
     elif estrategia == "oraciones":
-        chunks = chunk_oraciones(texto, **base)
-        usados = {**base, "herramienta": "spaCy"}
+        chunks = chunk_oraciones(texto, modelos, **base)
+        usados = {**base, **comunes, "herramienta": "spaCy + agrupación propia"}
     elif estrategia == "semantico":
-        if modelos is None:
-            raise ValueError("El chunking semántico necesita el modelo de embeddings")
-        chunks = chunk_semantico(texto, modelos, **base)
-        usados = {**{k: v for k, v in base.items() if k not in ("oraciones", "vectores")},
-                  "comparacion": "oracion_vs_centroide",
-                  "herramienta": "sentence-transformers", "modelo": config.MODELO_TEXTO}
+        chunks = chunk_semantico(texto, modelos, **base, **precalculado)
+        usados = {**base, **comunes, "comparacion": "oracion_vs_centroide",
+                  "herramienta": "spaCy + sentence-transformers", "modelo": config.MODELO_TEXTO}
     else:
         raise ValueError(f"Estrategia desconocida: {estrategia}")
     return chunks, usados

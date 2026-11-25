@@ -146,13 +146,16 @@ WHERE (pr.nombre LIKE 'Martes de frutas%'  AND c.nombre = 'Frutas y verduras')
 
     # ---------------- Personas, compras y domicilios ----------------
     lineas.append(r"""-- Usuarios internos: 50 empleados (10 por sede: 6 administrativos y 4 conductores)
-INSERT INTO usuario (nombre, email, rol)
-SELECT 'Empleado ' || g, 'empleado' || g || '@mercarag.co',
-       CASE WHEN (g - 1) % 10 < 6 THEN 'administrativo' ELSE 'empleado' END
+-- Jerarquías ISA disjuntas y totales: usuario.tipo = 'empleado' y empleado.tipo_empleado
+-- decide el subtipo. Todo va en una sola transacción (BEGIN ... COMMIT) porque los triggers
+-- diferidos verifican al final que cada usuario y cada empleado tenga la fila de su subtipo.
+INSERT INTO usuario (nombre, email, tipo)
+SELECT 'Empleado ' || g, 'empleado' || g || '@mercarag.co', 'empleado'
 FROM generate_series(1, 50) g;
 
-INSERT INTO empleado (id_usuario, id_punto_venta, documento, fecha_ingreso, salario)
-SELECT u.id_usuario, ((g - 1) / 10) + 1, (1053000000 + g)::text,
+INSERT INTO empleado (id_usuario, tipo_empleado, id_punto_venta, documento, fecha_ingreso, salario)
+SELECT u.id_usuario, CASE WHEN (g - 1) % 10 < 6 THEN 'administrativo' ELSE 'conductor' END,
+       ((g - 1) / 10) + 1, (1053000000 + g)::text,
        DATE '2020-01-01' + (g * 37) % 2000,
        CASE WHEN (g - 1) % 10 < 6 THEN 2200000 + (g % 6) * 350000 ELSE 1750000 END
 FROM generate_series(1, 50) g
@@ -167,7 +170,7 @@ JOIN usuario u ON u.email = 'empleado' || g || '@mercarag.co'
 JOIN empleado e ON e.id_usuario = u.id_usuario
 WHERE (g - 1) % 10 < 6;
 
-INSERT INTO conductor (id_empleado, licencia, categoria, vencimiento)
+INSERT INTO conductor (id_empleado, licencia, categoria_licencia, vencimiento_licencia)
 SELECT e.id_empleado, 'LIC-' || (17000000 + g), CASE WHEN g % 2 = 0 THEN 'A2' ELSE 'C1' END,
        DATE '2027-06-30' + (g * 11) % 900
 FROM generate_series(1, 50) g
@@ -187,7 +190,7 @@ FROM (VALUES
 
 -- Clientes: 5.000 (volumen estimado en la Entrega 1)
 SELECT setseed(0.43);
-INSERT INTO usuario (nombre, email, rol)
+INSERT INTO usuario (nombre, email, tipo)
 SELECT (ARRAY['Ana','Carlos','Luisa','Andrés','María','Juan','Valentina','Santiago','Camila','Felipe',
               'Laura','Sebastián','Daniela','Mateo','Sara','Julián','Paula','Tomás','Natalia','David'])[1 + (g % 20)]
        || ' ' ||
@@ -215,17 +218,9 @@ FROM cliente c
 CROSS JOIN generate_series(1, 2) n
 WHERE n = 1 OR c.id_cliente % 3 = 0;
 
--- Total de la compra mantenido por trigger (dato derivado, ver Entrega 1)
-CREATE OR REPLACE FUNCTION fn_actualizar_total_compra() RETURNS trigger AS $$
-BEGIN
-    UPDATE compra c
-       SET total = COALESCE((SELECT SUM(d.cantidad * d.precio_unitario)
-                               FROM detalle_compra d
-                              WHERE d.id_compra = c.id_compra), 0)
-     WHERE c.id_compra = COALESCE(NEW.id_compra, OLD.id_compra);
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
+-- compra.total es derivado y lo mantiene el trigger trg_detalle_compra_total (schema.sql).
+-- Para la carga masiva se desactiva y el total se calcula una sola vez con un UPDATE.
+ALTER TABLE detalle_compra DISABLE TRIGGER trg_detalle_compra_total;
 
 -- Compras: 30.000 en 2026 (≈ 2/3 domicilio -> ~20.000 domicilios, como en la Entrega 1)
 SELECT setseed(0.44);
@@ -255,9 +250,7 @@ UPDATE compra c SET total = s.total
 FROM (SELECT id_compra, SUM(cantidad * precio_unitario) AS total FROM detalle_compra GROUP BY id_compra) s
 WHERE s.id_compra = c.id_compra;
 
-CREATE TRIGGER trg_detalle_compra_total
-AFTER INSERT OR UPDATE OR DELETE ON detalle_compra
-FOR EACH ROW EXECUTE FUNCTION fn_actualizar_total_compra();
+ALTER TABLE detalle_compra ENABLE TRIGGER trg_detalle_compra_total;
 
 -- Domicilios: uno por cada compra con canal 'domicilio'
 SELECT setseed(0.46);
