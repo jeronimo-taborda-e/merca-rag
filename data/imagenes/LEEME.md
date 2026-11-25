@@ -1,7 +1,8 @@
 # Fotos del catálogo
 
 Ponga aquí las fotos de los productos (JPG, PNG o WEBP), **una carpeta por producto base**.
-El nombre de la carpeta enlaza la foto con su ficha de producto y con el producto en la base:
+El nombre de la carpeta enlaza la foto con su ficha de producto. Cada foto pertenece a **una sola** ficha (su único dueño en la base)
+y el producto que muestra se obtiene a través de esa ficha:
 
 ```
 data/imagenes/aguacate_hass/aguacate_1.jpg   ->  FICHA_AGUACATE_HASS  ->  producto "Aguacate Hass ..."
@@ -10,8 +11,9 @@ data/imagenes/cafe_molido_tostado/bolsa.png  ->  FICHA_CAFE_MOLIDO_TOSTADO
 
 - Mínimo recomendado: 4 fotos en al menos 4 carpetas distintas (como en el laboratorio).
 - Las fotos que NO deben estar en la base (para probar imagen -> imagen e imagen -> texto) van en `data/consultas/`.
-- Opcional: `data/imagenes/manifest.csv` con columnas `archivo,codigo_doc,codigo_barras,descripcion,etiquetas`
-  (etiquetas separadas por `;`) para dar una descripción o un producto específico a cada foto.
+- Opcional: `data/imagenes/manifest.csv` con columnas `archivo,codigo_doc,descripcion,etiquetas`
+  (etiquetas separadas por `;`) para dar a cada foto otra ficha, una descripción corta (máx. 200 caracteres) o sus etiquetas.
+- Una foto cuya carpeta no corresponde a ninguna ficha cargada no se inserta: la carga la reporta en `omitidas`.
 - La misma foto con otro nombre no se duplica: se identifica por su SHA-256.
 
 ## Nombres de carpeta válidos

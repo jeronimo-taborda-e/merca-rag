@@ -21,15 +21,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 # Modelo de spaCy en español (separación en oraciones para el chunking)
 RUN python -m spacy download es_core_news_sm
-# Codificación de tiktoken para el TokenTextSplitter (chunking de tamaño fijo).
-# Se descarga en la construcción para no depender de internet al ejecutar.
-ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
-RUN mkdir -p /opt/tiktoken \
-    && python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" \
-    && chmod -R a+rX /opt/tiktoken
-
 # Verificacion en tiempo de build: si la importacion falla, la imagen no se construye
-RUN python -c "from sentence_transformers import SentenceTransformer; import spacy; spacy.load('es_core_news_sm'); from langchain_text_splitters import TokenTextSplitter; TokenTextSplitter(encoding_name='cl100k_base').split_text('hola mundo'); print('Dependencias OK')"
+RUN python -c "from sentence_transformers import SentenceTransformer; import spacy; spacy.load('es_core_news_sm'); import scipy.stats, openai; print('Dependencias OK')"
 
 # Usuario sin privilegios (UID 1000) para evitar problemas de permisos en las
 # carpetas montadas

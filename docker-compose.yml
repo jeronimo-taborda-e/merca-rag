@@ -4,7 +4,7 @@
 #
 # Dos servicios:
 #   db       -> PostgreSQL 17 con la extensión pgvector ya instalada
-#   jupyter  -> JupyterLab con Python, MiniLM, CLIP, spaCy, LangChain y el cliente de Groq
+#   jupyter  -> JupyterLab con Python, multilingual-e5-small, CLIP, spaCy y el cliente de Groq
 #
 # Uso:
 #   1. Revisar el archivo .env (copiar de .env.example si no existe)
@@ -47,7 +47,7 @@ services:
   jupyter:
     build:
       context: ./jupyter
-    image: mercarag-jupyter:1.1
+    image: mercarag-jupyter:1.2
     container_name: mercarag_jupyter
     restart: unless-stopped
     depends_on:

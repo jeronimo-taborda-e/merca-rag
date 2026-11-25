@@ -7,7 +7,7 @@ ipywidgets>=8.1,<9
 psycopg2-binary>=2.9.10,<3
 pgvector>=0.4,<0.6
 
-# Embeddings (MiniLM multilingüe + CLIP)
+# Embeddings (multilingual-e5-small + CLIP)
 sentence-transformers[image]>=5.4,<7
 
 # Datos, visualización y NLP (lo que instalaba archivo_arranque.ipynb)
@@ -16,11 +16,10 @@ pandas>=2.2,<4
 pillow>=11,<13
 matplotlib>=3.9,<4
 scikit-learn>=1.5,<2
+scipy>=1.13,<2          # prueba de Wilcoxon del experimento
 nltk>=3.9,<4
 
-# Chunking (Entrega 1): tamaño fijo, oraciones y semántico
-langchain-text-splitters>=0.3,<2
-tiktoken>=0.8,<1
+# Chunking (Entrega 1): el tamaño fijo usa el tokenizador del modelo; oraciones y semántico, spaCy
 spacy>=3.8,<4
 
 # Lectura de documentos PDF
