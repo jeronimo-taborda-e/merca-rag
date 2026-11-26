@@ -15,7 +15,8 @@ DROP TABLE IF EXISTS
 DROP FUNCTION IF EXISTS fn_actualizar_total_compra() CASCADE;
 DROP FUNCTION IF EXISTS fn_validar_resultado() CASCADE;
 DROP FUNCTION IF EXISTS fn_validar_evaluacion() CASCADE;
-DROP FUNCTION IF EXISTS fn_validar_direccion_domicilio() CASCADE;
+DROP FUNCTION IF EXISTS fn_validar_direccion_domicilio() CASCADE;   -- obsoleta (ya no hay FK domicilio -> direccion)
+DROP FUNCTION IF EXISTS fn_aplicar_promocion() CASCADE;
 DROP FUNCTION IF EXISTS fn_validar_isa_usuario() CASCADE;
 DROP FUNCTION IF EXISTS fn_validar_isa_empleado() CASCADE;
 
@@ -176,20 +177,36 @@ CREATE TABLE compra (
     CONSTRAINT fk_compra_punto_venta FOREIGN KEY (id_punto_venta) REFERENCES punto_venta(id_punto_venta) ON DELETE RESTRICT
 );
 
+-- Cada línea registra la promoción que se le aplicó (0 o 1: las promociones no son acumulables)
+-- y el descuento por unidad. precio_unitario = precio_lista - descuento es lo que paga el cliente.
 CREATE TABLE detalle_compra (
     id_compra        INT           NOT NULL,
     id_producto      INT           NOT NULL,
     cantidad         INT           NOT NULL CONSTRAINT ck_detalle_compra_cantidad CHECK (cantidad > 0),
+    precio_lista     NUMERIC(10,2) NOT NULL CONSTRAINT ck_detalle_compra_precio_lista CHECK (precio_lista >= 0),
+    id_promocion     INT,                                                              -- NULL = sin promoción
+    descuento        NUMERIC(10,2) NOT NULL DEFAULT 0,                                 -- por unidad, derivado (trigger)
     precio_unitario  NUMERIC(10,2) NOT NULL CONSTRAINT ck_detalle_compra_precio CHECK (precio_unitario >= 0),
     CONSTRAINT pk_detalle_compra PRIMARY KEY (id_compra, id_producto),
+    CONSTRAINT ck_detalle_compra_descuento CHECK (descuento >= 0 AND descuento <= precio_lista),
+    CONSTRAINT ck_detalle_compra_sin_promocion CHECK (id_promocion IS NOT NULL OR descuento = 0),
+    CONSTRAINT ck_detalle_compra_precio_final CHECK (precio_unitario = precio_lista - descuento),
     CONSTRAINT fk_detalle_compra_compra   FOREIGN KEY (id_compra)   REFERENCES compra(id_compra)     ON DELETE CASCADE,
-    CONSTRAINT fk_detalle_compra_producto FOREIGN KEY (id_producto) REFERENCES producto(id_producto) ON DELETE RESTRICT
+    CONSTRAINT fk_detalle_compra_producto FOREIGN KEY (id_producto) REFERENCES producto(id_producto) ON DELETE RESTRICT,
+    -- La promoción aplicada debe cubrir el producto de la línea (misma columna id_producto).
+    CONSTRAINT fk_detalle_compra_promocion FOREIGN KEY (id_promocion, id_producto)
+        REFERENCES promocion_producto(id_promocion, id_producto) ON DELETE RESTRICT
 );
 
+-- El domicilio llega al cliente por un único camino: domicilio -> compra -> cliente.
+-- La dirección de entrega se guarda como atributos del domicilio (copia tomada al hacer el
+-- pedido desde la libreta de direcciones del cliente), no como FK a direccion.
 CREATE TABLE domicilio (
-    id_domicilio    SERIAL        CONSTRAINT pk_domicilio PRIMARY KEY,
-    id_compra       INT           NOT NULL CONSTRAINT uq_domicilio_compra UNIQUE,   -- compra 1 : 0..1 domicilio
-    id_direccion    INT           NOT NULL,                                          -- direccion 1 : N domicilio
+    id_domicilio      SERIAL        CONSTRAINT pk_domicilio PRIMARY KEY,
+    id_compra         INT           NOT NULL CONSTRAINT uq_domicilio_compra UNIQUE,   -- compra 1 : 0..1 domicilio
+    direccion_entrega VARCHAR(200)  NOT NULL,
+    barrio_entrega    VARCHAR(100),
+    referencia        VARCHAR(250),
     id_vehiculo     INT,                                                             -- se asignan al despachar
     id_conductor    INT,
     estado          VARCHAR(20)   NOT NULL DEFAULT 'pendiente'
@@ -199,7 +216,6 @@ CREATE TABLE domicilio (
         estado IN ('pendiente','cancelado') OR (id_conductor IS NOT NULL AND id_vehiculo IS NOT NULL)),
     CONSTRAINT ck_domicilio_hora CHECK ((estado = 'entregado') = (hora_entrega IS NOT NULL)),
     CONSTRAINT fk_domicilio_compra    FOREIGN KEY (id_compra)    REFERENCES compra(id_compra)       ON DELETE RESTRICT,
-    CONSTRAINT fk_domicilio_direccion FOREIGN KEY (id_direccion) REFERENCES direccion(id_direccion) ON DELETE RESTRICT,
     CONSTRAINT fk_domicilio_vehiculo  FOREIGN KEY (id_vehiculo)  REFERENCES vehiculo(id_vehiculo)   ON DELETE RESTRICT,
     CONSTRAINT fk_domicilio_conductor FOREIGN KEY (id_conductor) REFERENCES conductor(id_empleado)  ON DELETE RESTRICT
 );
@@ -453,20 +469,40 @@ CREATE TRIGGER trg_validar_evaluacion
     BEFORE INSERT OR UPDATE ON evaluacion
     FOR EACH ROW EXECUTE FUNCTION fn_validar_evaluacion();
 
--- E4. La dirección del domicilio pertenece al cliente que hizo la compra.
-CREATE FUNCTION fn_validar_direccion_domicilio() RETURNS trigger AS $$
+-- E4. La promoción de una línea debe estar vigente en la fecha de la compra; el descuento por
+--     unidad y el precio final se derivan de ella (porcentaje del precio de lista o valor fijo,
+--     sin bajar de 0). Que la promoción cubra el producto lo garantiza fk_detalle_compra_promocion.
+CREATE FUNCTION fn_aplicar_promocion() RETURNS trigger AS $$
+DECLARE
+    v_tipo   VARCHAR(20);
+    v_valor  NUMERIC(10,2);
+    v_inicio DATE;
+    v_fin    DATE;
+    v_fecha  DATE;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM compra c JOIN direccion d ON d.id_cliente = c.id_cliente
-                    WHERE c.id_compra = NEW.id_compra AND d.id_direccion = NEW.id_direccion) THEN
-        RAISE EXCEPTION 'La dirección % no pertenece al cliente de la compra %', NEW.id_direccion, NEW.id_compra;
+    IF NEW.id_promocion IS NULL THEN
+        NEW.descuento := 0;
+    ELSE
+        SELECT tipo_descuento, valor, fecha_inicio, fecha_fin INTO v_tipo, v_valor, v_inicio, v_fin
+          FROM promocion WHERE id_promocion = NEW.id_promocion;
+        SELECT fecha::date INTO v_fecha FROM compra WHERE id_compra = NEW.id_compra;
+        IF v_fecha NOT BETWEEN v_inicio AND v_fin THEN
+            RAISE EXCEPTION 'La promoción % no está vigente el % (vigencia % a %)',
+                NEW.id_promocion, v_fecha, v_inicio, v_fin;
+        END IF;
+        NEW.descuento := CASE v_tipo
+                             WHEN 'porcentaje' THEN round(NEW.precio_lista * v_valor / 100, 2)
+                             ELSE LEAST(v_valor, NEW.precio_lista)
+                         END;
     END IF;
+    NEW.precio_unitario := NEW.precio_lista - NEW.descuento;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_validar_direccion_domicilio
-    BEFORE INSERT OR UPDATE OF id_compra, id_direccion ON domicilio
-    FOR EACH ROW EXECUTE FUNCTION fn_validar_direccion_domicilio();
+CREATE TRIGGER trg_aplicar_promocion
+    BEFORE INSERT OR UPDATE OF id_compra, id_promocion, precio_lista ON detalle_compra
+    FOR EACH ROW EXECUTE FUNCTION fn_aplicar_promocion();
 
 
 CREATE FUNCTION fn_validar_isa_usuario() RETURNS trigger AS $$
@@ -512,7 +548,7 @@ CREATE INDEX idx_vehiculo_punto_venta         ON vehiculo (id_punto_venta);
 CREATE INDEX idx_compra_cliente               ON compra (id_cliente);
 CREATE INDEX idx_compra_punto_venta           ON compra (id_punto_venta);
 CREATE INDEX idx_detalle_compra_producto      ON detalle_compra (id_producto);
-CREATE INDEX idx_domicilio_direccion          ON domicilio (id_direccion);
+CREATE INDEX idx_detalle_compra_promocion     ON detalle_compra (id_promocion) WHERE id_promocion IS NOT NULL;
 CREATE INDEX idx_domicilio_vehiculo           ON domicilio (id_vehiculo);
 CREATE INDEX idx_domicilio_conductor          ON domicilio (id_conductor);
 CREATE INDEX idx_documento_producto           ON documento (id_producto);

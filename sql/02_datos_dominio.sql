@@ -1435,12 +1435,23 @@ SELECT 1 + (random() * 4999)::int,
        0
 FROM generate_series(1, 30000);
 
--- 1 a 6 líneas por compra, con productos disponibles en la sede de la compra
+-- 1 a 6 líneas por compra, con productos disponibles en la sede de la compra.
+-- Si el producto tiene promociones vigentes el día de la compra se aplica la de mayor
+-- descuento (no son acumulables). descuento y precio_unitario los deriva trg_aplicar_promocion.
 SELECT setseed(0.45);
-INSERT INTO detalle_compra (id_compra, id_producto, cantidad, precio_unitario)
-SELECT DISTINCT ON (x.id_compra, x.id_producto) x.id_compra, x.id_producto, x.cantidad, p.precio
+INSERT INTO detalle_compra (id_compra, id_producto, cantidad, precio_lista, id_promocion)
+SELECT DISTINCT ON (x.id_compra, x.id_producto) x.id_compra, x.id_producto, x.cantidad, p.precio,
+       (SELECT pr.id_promocion
+          FROM promocion_producto pp
+          JOIN promocion pr ON pr.id_promocion = pp.id_promocion
+         WHERE pp.id_producto = x.id_producto
+           AND x.fecha::date BETWEEN pr.fecha_inicio AND pr.fecha_fin
+         ORDER BY CASE pr.tipo_descuento WHEN 'porcentaje' THEN p.precio * pr.valor / 100
+                                         ELSE LEAST(pr.valor, p.precio) END DESC,
+                  pr.id_promocion
+         LIMIT 1)
 FROM (
-    SELECT c.id_compra, 1 + (random() * (SELECT max(id_producto) - 1 FROM producto))::int AS id_producto,
+    SELECT c.id_compra, c.fecha, 1 + (random() * (SELECT max(id_producto) - 1 FROM producto))::int AS id_producto,
            1 + (random() * 3)::int AS cantidad
     FROM compra c
     CROSS JOIN LATERAL generate_series(1, 1 + (c.id_compra * 7) % 6) l
@@ -1455,16 +1466,22 @@ WHERE s.id_compra = c.id_compra;
 
 ALTER TABLE detalle_compra ENABLE TRIGGER trg_detalle_compra_total;
 
--- Domicilios: uno por cada compra con canal 'domicilio'
+-- Domicilios: uno por cada compra con canal 'domicilio'. La dirección de entrega se copia
+-- de la primera dirección registrada por el cliente de la compra (único camino al cliente).
 SELECT setseed(0.46);
-INSERT INTO domicilio (id_compra, id_direccion, id_vehiculo, id_conductor, estado, hora_entrega)
+INSERT INTO domicilio (id_compra, direccion_entrega, barrio_entrega, referencia,
+                       id_vehiculo, id_conductor, estado, hora_entrega)
 SELECT c.id_compra,
-       (SELECT d.id_direccion FROM direccion d WHERE d.id_cliente = c.id_cliente ORDER BY d.id_direccion LIMIT 1),
+       dir.direccion, dir.barrio, dir.referencia,
        v.id_vehiculo,
        co.id_empleado,
        est.estado,
        CASE WHEN est.estado = 'entregado' THEN c.fecha + (30 + random() * 90) * INTERVAL '1 minute' END
 FROM compra c
+CROSS JOIN LATERAL (
+    SELECT d.direccion, d.barrio, d.referencia FROM direccion d
+    WHERE d.id_cliente = c.id_cliente ORDER BY d.id_direccion LIMIT 1
+) dir
 CROSS JOIN LATERAL (
     SELECT CASE WHEN c.fecha > TIMESTAMP '2026-11-15' THEN
                      (ARRAY['pendiente','en_ruta','entregado'])[1 + (c.id_compra % 3)]

@@ -31,11 +31,10 @@ ORDER BY p.nombre;
 -- RF-03. Estado e historial de los domicilios de un cliente
 SELECT d.id_domicilio, co.fecha AS fecha_compra, d.estado, d.hora_entrega,
        round(EXTRACT(EPOCH FROM (d.hora_entrega - co.fecha)) / 60) AS minutos_entrega,
-       dir.direccion, dir.barrio, u_cond.nombre AS conductor, v.placa, v.tipo AS vehiculo, co.total
+       d.direccion_entrega, d.barrio_entrega, u_cond.nombre AS conductor, v.placa, v.tipo AS vehiculo, co.total
 FROM domicilio d
-JOIN compra co    ON co.id_compra = d.id_compra
+JOIN compra co    ON co.id_compra = d.id_compra     -- único camino del domicilio al cliente
 JOIN cliente cl   ON cl.id_cliente = co.id_cliente
-JOIN direccion dir ON dir.id_direccion = d.id_direccion
 LEFT JOIN conductor cd ON cd.id_empleado = d.id_conductor
 LEFT JOIN empleado e   ON e.id_empleado = cd.id_empleado
 LEFT JOIN usuario u_cond ON u_cond.id_usuario = e.id_usuario
@@ -90,6 +89,29 @@ JOIN punto_venta pv ON pv.id_punto_venta = i.id_punto_venta
 WHERE i.stock <= i.stock_minimo
 ORDER BY pv.nombre, i.stock
 LIMIT 30;
+
+-- RF-07e. Descuento aplicado por promoción (cada línea de compra registra la promoción usada)
+SELECT pr.nombre AS promocion, pr.tipo_descuento, pr.valor,
+       count(*)                              AS lineas,
+       count(DISTINCT d.id_compra)           AS compras,
+       sum(d.cantidad)                       AS unidades,
+       sum(d.cantidad * d.precio_lista)      AS ventas_precio_lista,
+       sum(d.cantidad * d.descuento)         AS descuento_total,
+       sum(d.cantidad * d.precio_unitario)   AS ventas_netas
+FROM detalle_compra d
+JOIN promocion pr ON pr.id_promocion = d.id_promocion
+GROUP BY pr.id_promocion, pr.nombre, pr.tipo_descuento, pr.valor
+ORDER BY descuento_total DESC;
+
+-- RF-07f. Detalle de una compra: qué descuento se aplicó en cada línea
+SELECT d.id_compra, p.nombre AS producto, d.cantidad, d.precio_lista,
+       COALESCE(pr.nombre, '(sin promoción)') AS promocion, d.descuento, d.precio_unitario,
+       d.cantidad * d.precio_unitario AS subtotal
+FROM detalle_compra d
+JOIN producto p ON p.id_producto = d.id_producto
+LEFT JOIN promocion pr ON pr.id_promocion = d.id_promocion
+WHERE d.id_compra = (SELECT min(id_compra) FROM detalle_compra WHERE id_promocion IS NOT NULL)
+ORDER BY p.nombre;
 
 -- RF-08a. Trazabilidad por tipo de consulta y estrategia de chunking
 SELECT c.tipo_consulta, c.estrategia_chunking,

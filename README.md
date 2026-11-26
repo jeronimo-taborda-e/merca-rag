@@ -129,7 +129,20 @@ impide guardar uno de más de 512 tokens, así que ninguno se trunca al vectoriz
   `resultado.id_chunk` con `CHECK` exclusivo chunk/imagen; `query_embeddings.vector_texto` (384) y `vector_clip` (512);
   `embeddings_imagen` 1:1 (`UNIQUE id_img`).
 - Triggers: total de la compra, estrategia del chunk = estrategia de la consulta, evaluación solo con ground truth,
-  dirección del domicilio del mismo cliente.
+  promoción vigente y descuento derivado en cada línea de compra.
+
+### Recomendaciones adicionales sobre el ERD
+
+- **Domicilio con un solo camino al cliente** (`domicilio → compra → cliente`). Se eliminó la relación
+  `Dirección —se entrega en— Domicilio` (y `domicilio.id_direccion`), que daba un segundo dueño y permitía que los dos
+  caminos apuntaran a clientes distintos. La dirección de entrega queda como atributos del domicilio
+  (`direccion_entrega`, `barrio_entrega`, `referencia`), copiados de la libreta de direcciones del cliente al hacer el
+  pedido; así además se conserva dónde se entregó aunque el cliente edite o borre la dirección después.
+- **La promoción queda registrada en la compra**: nueva relación `Promoción —se aplica en— Detalle Compra` (1:N,
+  parcial). Cada línea guarda `id_promocion` (0 o 1, las promociones no son acumulables), `precio_lista`, `descuento`
+  por unidad y `precio_unitario = precio_lista − descuento`. La FK compuesta `(id_promocion, id_producto) →
+  promocion_producto` garantiza que la promoción cubra el producto, y `trg_aplicar_promocion` valida la vigencia en la
+  fecha de la compra y calcula el descuento. Consultas RF-07e/RF-07f en `sql/03_consultas_clasicas.sql`.
 
 ## Notas
 
